@@ -18,5 +18,10 @@
 # Allgemeine Beschreibung
 
 ## Testaufbau 2
-
 Zwei Publisher, beide senden durchgehend Daten. Subscriber verarbeitet beide.
+![Aufbau 2](Test_01.gif)
+
+## Testaufbau 3
+Zwei Publisher, einer stoppt das Senden. Prüfen, ob alles funktioniert.
+![Aufbau 2](Test_02.gif)
+
