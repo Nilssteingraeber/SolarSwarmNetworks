@@ -65,26 +65,37 @@ Für den Test sollen zwei Dockerfiles `simple_pub_dockerfile` und `simple_sub_do
     ADD first_package /home/ubuntu/solarswarm/src/first_package
     ADD pub_init.bash /home/ubuntu/solarswarm
     WORKDIR /home/ubuntu/solarswarm
-    # ENTRYPOINT bash pub_init.bash 
+    SHELL ["/bin/bash", "-c"]
+    RUN ["rosdep", "update"]
+    ENTRYPOINT ["bash", "pub_init.bash"] 
 ```
+
 `pub_init.bash` sieht so aus:
 ```
-    rosdep update;
-    rosdep install -i --from-path src --rosdistro jazzy -y;
-    colcon build --packages-select first_package;
-    source install/setup.bash;
-    ros2 run first_package simple_pub;
-```  
+    source /opt/ros/jazzy/setup.bash
+    #rosdep update; #beim Bauen sinnvoller wegen Ausführdauer und Internetzugang
+    rosdep install -i --from-path src --rosdistro jazzy -y
+    colcon build --packages-select first_package
+    source install/setup.bash
+    ros2 run first_package simple_pub
+```
+
+Die Notation mit eckigen Klammern wird von Docker empfohlen. Statt `ENTRYPOINT ["bash", "pub_init.bash"]` wäre auch `ENTRYPOINT bash pub_init.bash` erlaubt, würde aber eine Warnung beim Bauen ausgeben.
+
+`SHELL ["/bin/bash", "-c"]` ist notwendig, damit der `source` Befehl funktioniert und `ros2` funktionieren kann.
+Lösung von Bruno Bronosky als Verbesserung zu Anubhav Sinhas Antwort. Referenz: https://stackoverflow.com/a/25423366
 
 `first_package` soll im Container in `/home/ubuntu/solarswarm/src` liegen, damit es aus dem Verzeichnis `solarswarm` aus gebaut werden kann. Die Container werden in zwei unterschiedlichen Terminals gebaut mit
     `sudo docker build --tag pub -f simple_pub_dockerfile .` bzw.
     `sudo docker build --tag sub -f simple_sub_dockerfile .`
 und gestartet mit
-    `sudo docker run -it pub` bzw.
-    `sudo docker run -it sub`
+    `sudo docker run pub` bzw.
+    `sudo docker run sub`
 
-`ENTRYPOINT` ist auskommentiert, da es nicht gelang, `ros2 run` automatisch auszuführen. `pub` muss zuerst gestartet werden, da die Node `simple_sub` vom Publisher abhängt. Mit Docker Compose ließe sich die Abhängigkeit notieren, dass `sub` immer danach gestartet wird.
-Sobald der Container `pub` im ersten Terminal läuft, kann die Node mit `bash pub_init.bash` gestartet werden. Es erscheint kontinuierlich die Ausgabe `Status Publiziert.`. Anschließend kann im zweiten Container im anderen Terminal mit `bash pub_init.bash` der Subscriber gestartet werden. Die wiederholte Ausgabe `Publisher still running...` deutet an, dass sich die Nodes gefunden haben - auch ohne Netzwerk.
+Ohne das Setzen von `SHELL` in der Dockerfile gelang es zuvor nicht, über `ENTRYPOINT` oder `CMD` das Skript vollständig auszuführen, da `source` nicht ausgeführt wurde und `ros2` der Shell unbekannt blieb. Die Funktionalität des Bash-Skripts befand sich zuvor in der Dockerfile, wurde aber verlagert, da es nur gelang, mit `sudo docker run -it pub` und `sudo docker run -it sub` innerhalb der laufenden Container das Skript auszuführen. Eine mögliche Erklärung dafür ist, dass unter Ubuntu `-i` standardmäßig `bash` verwendet, `CMD` und `ENTRYPOINT` von Docker hingegen `sh`. Mit `sudo docker run -it ros:jazzy` und anschließend `cat /etc/os-release` ließ sich prüfen, dass das Image `ros` zur Zeit des Tests (Mai 2025) auf Ubuntu 24.04.2 LTS basiert.
+
+`pub` muss zuerst gestartet werden, da die Node `simple_sub` vom Publisher abhängt. Mit Docker Compose ließe sich die Abhängigkeit notieren, dass beispielsweise hier `sub` immer danach gestartet wird. Im Verlauf unseres Projekts werden wir uns darauf stützen, doch bei diesem kleinen Test reicht es, die Container manuell zu starten.
+Sobald der Container `pub` im ersten Terminal läuft, sollte nach kurzer Zeit kontinuierlich die Ausgabe `Status Publiziert.` erscheinen. Anschließend kann im zweiten Container im anderen Terminal der Subscriber gestartet werden. Die wiederholte Ausgabe `Publisher still running...` deutet an, dass sich die Nodes gefunden haben - auch ohne durch Docker definiertes Netzwerk.
 
 ## Docker-Compose mit Netzwerk
 Docker bietet verschiedene Netzwerktreiber. Am leichtesten lassen sich Container als Services in einer Docker-Compose.yaml einem Netzwerk zuordnen. Für den Test auf einem Host verwenden wir den Standard Netzwerktreiber `bridge`. Für den Test über verschiedene Hosts werden wir den `overlay`-Treiber verwenden, da dieser Docker daemons miteinander verbindet. 
@@ -92,26 +103,25 @@ Quelle: https://docs.docker.com/engine/network/
 
 Für die Docker-Compose.yaml lassen sich einfach die Dockerfiles vom vorherigen Versuch verwenden. Sie sieht wie folgt aus:
 ```
-services:
-        pub:
-            build: ./simple_pub_dockerfile
-            networks:
-                - my_network
-            # tty: true
-            # stdin_open: true
-        sub:
-            build: ./simple_sub_dockerfile
-            networks:
-                - my_network
-            # tty: true
-            # stdin_open: true
-    networks:
-        my_network:
-            driver: bridge
+    services:
+            pub:
+                build: ./simple_pub_dockerfile
+                networks:
+                    - my_network
+                # tty: true
+                # stdin_open: true
+            sub:
+                build: ./simple_sub_dockerfile
+                networks:
+                    - my_network
+                # tty: true
+                # stdin_open: true
+        networks:
+            my_network:
+                driver: bridge
 ```
 Beide Container terminieren, sobald sie laufen. Mit mit `tty` und `stdin_open` können sie zwar offen gehalten werden, geben aber keine sichtbare Ausgabe.
-Um zu prüfen, ob die Kommunikation zwischen den Knoten gelingt, kann manuell ein Netzwerk mit `sudo docker network create -d bridge my_network` erstellt und beide Container wie zuvor gestartet werden.
-`sudo docker run --network=my_network -it pub` und `sudo docker run --network=my_network -it sub` in verschiedenen Terminals startet die Container in dem Netzwerk. Mit `bash pub_init.bash` und `bash sub_init.bash` starten die ROS2 Nodes wieder. Die selben Ausgaben wie zuvor sollten erscheinen.
-
+Um zu prüfen, ob die Kommunikation zwischen den Knoten gelingt, wurde manuell ein Netzwerk mit `sudo docker network create -d bridge my_network` erstellt und beide Container wie zuvor gestartet.
+`sudo docker run --network=my_network pub` und `sudo docker run --network=my_network sub` in verschiedenen Terminals startet die Container in dem Netzwerk. Nach kurzer Zeit sollten wieder beide ROS2 Nodes miteinander komunizieren - erkennbar an den Ausgaben. Das Ergebnis gleicht dem vorherigen. Docker-Netzwerke scheinen für diesen Test auf einem Gerät überflüssig. 
 
 # Dritter Test: In zwei Containern auf jeweils verschiedenen Maschinen

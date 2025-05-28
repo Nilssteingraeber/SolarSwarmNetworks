@@ -72,33 +72,65 @@ Eine Übersicht der erweiterten Features von BATMAN advanced bietet eine Präsen
 Für den Start mit BATMAN-adv auf Linux benötigen wird das Kernel-Modul `batman-adv` und das Kommandozeilentool `batctl` zum Konfigurieren und Debuggen. Das Kernel-Modul ist im Kernel der neueren Linux Distributionen bereits enthalten. Es kann mit `sudo modprobe batman-adv` geladen werden. Zum automatischen Laden nach Systemstart bietet open-mesh eine Anleitung an: https://www.open-mesh.org/projects/batman-adv/wiki/Debian_batman-adv_AutoStartup
 
 Zur Sicherheit sei angemerkt: Im FAQ zu batman-adv wird zu Beschränkungen folgendes angemerkt:
-    "Batman has no security implemented. Also assigning IP addresses to the node(s) is not Batman's task.
-    You may want to use underlying security mechanisms, like: IBSS RSN."
-    Referenz: https://www.open-mesh.org/projects/batman-adv/wiki/Faq
+> "Batman has no security implemented. Also assigning IP addresses to the node(s) is not Batman's task.
+> You may want to use underlying security mechanisms, like: IBSS RSN."
+Referenz: https://www.open-mesh.org/projects/batman-adv/wiki/Faq
 Wir werden uns nicht mit der Sicherheit dieses Protokolls beschäftigen. Auf batman-adv basierende Projekte sollten Schwächen und Lösungen weiter untersucht werden.
 
-## Einrichten
+## Einrichtung
 Zu Beginn richten wir uns nach dem offiziellen Guide von Open Mesh. Falls nötig, nehmen wir weitere Konfigurationen vor und dokumentieren diese später.
 Zum Guide: https://www.open-mesh.org/projects/batman-adv/wiki/Quick-start-guide
 
 Sollte das im Guide verwendete WLAN-Interface `wlan0` nicht verfügbar sein, kann man sich mit `ip link` vorhandene Interfaces anzeigen lassen. Beim NIC heißt das WLAN-Interface `wlp0s20f3`. Das verwendete Tool `iw` muss zusätzlich installiert werden.
 
-## Kurzfassung zum Einrichten des NUC Mini-PCs
-Installation von batctl
-    `sudp apt update && sudo apt install batctl`
-Laden des Kernel-Moduls
-    `sudo modprobe batman-adv`
-Erstellen eines bat0-Interfaces
-    ```iw dev wlp0s20f3 del
-    iw phy phy0 interface add wlp0s20f3 type ibss
-    ip link set up mtu 1532 dev wlp0s20f3
-    iw dev wlp0s20f3 ibss join my-mesh-network 2412 HT20 fixed-freq 02:12:34:56:78:9A // Fehler bei diesem Schritt
-    batctl if add wlp0s20f3
-    ip link set up dev bat0```
-Installation und Aktivierung von `avahi-autoipd` für automatische IP Vergabe
-    `sudo apt install avahi-autoipd`
-    `sudo avahi-autoipd bat0`
+### Angepasst an NUC Mini-PCs
+Für den NUC sehen die Schritte des offiziellen Guide wie folgt aus:
 
+Installation von batctl: `sudp apt update && sudo apt install batctl`
+Laden des Kernel-Moduls: `sudo modprobe batman-adv`
+Erstellen eines bat0-Interfaces:
+```bash
+    sudo iw dev wlp0s20f3 del
+    sudo iw phy phy0 interface add wlp0s20f3 type ibss
+    sudo ip link set up mtu 1532 dev wlp0s20f3
+    sudo iw dev wlp0s20f3 ibss join my-mesh-network 2412 HT20 fixed-freq 02:12:34:56:78:9A #Fehler bei diesem Schritt
+    sudo batctl if add wlp0s20f3
+    ip link set up dev bat0
+```
+Installation und Aktivierung von `avahi-autoipd` für automatische IP Vergabe:
+```bash
+    sudo apt install avahi-autoipd`
+    sudo avahi-autoipd bat0`
+```
+
+`sudo iw dev wlp0s20f3 del` löscht temporär das Netzwerkinterface, wodurch der NUC keinen Internetzugang mehr hat. Den Mini-PC neuzustarten, ist der einfachste Weg, um alle Änderungen umzukehren. Demnach muss nach jedem Systemstart das Kernel-Modul (falls nicht automatisch) geladen und das Interface neu konfiguriert werden.
+
+Der vierte Befehl zum Erstellen eines bat0-Interfaces schlägt auch beim Weglassen optionaler Parameter fehl: `command failed: Operation not supported (-95)`.
+Dennoch gibt `batctl if` nach Auführung der restlichen zwei Befehle `wlp0s20f3: active` aus. Auch die automatische Zuweisung einer IP-Adresse funktioniert. Es ist somit ein aktives BATMAN-Interface, jedoch muss noch getestet werden, ob es tatsächlich Teil des Netzwerks `my-mesh-network` ist.
+
+### Alternativ iwconfig statt iw
+Installation von batctl: `sudp apt update && sudo apt install batctl`
+Laden des Kernel-Moduls: `sudo modprobe batman-adv`
+Erstellen eines bat0-Interfaces:
+```bash
+    sudo iwconfig wlp0s20f3 mode ibss # WLAN muss ausgeschaltet sein, sonst Fehler "Driver or resource busy"
+    sudo iwconfig wlp0s20f3 essid my-mesh-network # Optional freq 2412M anhängen
+    sudo ip link set up mtu 1532 dev wlp0s20f3 # hiervor WLAN wieder einschalten
+    sudo batctl if add wlp0s20f3
+    ip link set up dev bat0
+```
+`iwconfig` Befehle aus: https://wireless.docs.kernel.org/en/latest/en/users/documentation/iw/replace-iwconfig.html#join-an-ibss-ad-hoc-network
+
+WLAN im Terminal ein-/ausschalten mit `nmcli radio wifi on` bzw. `off`.
+Referenz: https://askubuntu.com/a/834194
+
+Installation und Aktivierung von `avahi-autoipd` für automatische IP Vergabe:
+```bash
+    sudo apt install avahi-autoipd`
+    sudo avahi-autoipd bat0`
+```
+
+Hier werden keine Fehlermeldungen ausgegeben und auch die IP-Zuweisung gelingt. Dieser Ansatz sollte ebenfalls getestet werden. Anders zum davorigen Ansatz ist, dass der NUC weiterhin einen Internetzugang hat.
 
 ## Konfigurieren und debuggen mit batctl
 Mit dem Kommandozeilentool `batctl` können Interfaces zu Mesh-netzwerken hinzugefügt oder entfernt werden, Parameter von batman-adv geändert und Features von batman-adv ein- oder ausgeschaltet werden. Seine gesamte Dokumentation kann nach der Installation in seiner `man page` (einsehbar mit `man batctl`) aufgerufen werden.
