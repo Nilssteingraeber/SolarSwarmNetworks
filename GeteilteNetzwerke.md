@@ -147,7 +147,21 @@ Mit `batctl` können wir sicherstellen, dass unser Netzwerk funktioniert und Kno
 
 ## Aggregation
 ## Loops
-https://www.open-mesh.org/projects/batman-adv/wiki/Bridge-loop-avoidance
-https://www.open-mesh.org/projects/batman-adv/wiki/Bridge-loop-avoidance-
+In der Netzwerktechnik betrachet man zwei Arten von Loops: Routing Loops (Schicht 3) und Bridge/Switch (Schicht 2) Loops. Beide beschreiben eine Situation, in der ein Paket immer wieder zwischen den selben Knoten verschickt wird und nie sein vorhergesehenes Ziel erreicht. Dieses Paket verbraucht Bandbreite solange es lebt und kann zu einer erheblicher Verlangsamung bis hin zu einem Stillstand einiger Knoten oder im schlimmsten Fall des ganzen Netzwerks führen. Die beiden Arten unterscheiden sich darin, wo und wie ein Loop entstehen kann.
 
-# ROS Loops
+**Routing Loops** können durch Fehler im Routing-Table mehrerer Knoten entstehen. In der einfachsten Form kann ein Fehler entstehen, wenn beispielsweise zwei Knoten A und B mit einander und einem dritten Knoten C verbunden sind. A möchte C erreichen und weiß, dass die Route zu C über B günstiger ist und schickt ein Paket an B. Wenn C ausfällt und B nicht erfährt, dass A ebenfalls keine Verbindung zu C mehr hat, schickt B das Paket zu A zurück. Teilt B nun A nicht mit, dass er C nicht erreichen konnte, versucht A das Ziel C über B zu erreichen. Ein Loop entsteht. Weitere Pakete an C häufen sich an, sodass die gesamte Bandbreite zwischen A und B aufgebraucht werden kann. Bei größeren Netzwerken würden dazwischenliegende Knoten ebenfalls beeinträchtigt werden.
+Referenz: https://www.geeksforgeeks.org/what-is-routing-loop-and-how-to-avoid-routing-loop/
+
+**Bridge Loops** können durch redundante Wege zu einem einem Ziel entstehen. Zum einen können falsche Verkabelung oder Konfiguration dafür verantwortlich sein. Werden zwei Ports eines Switches mit einem Kabel oder zwei Switches (welche auch Bridges sind) redundant miteinander verbunden, könne ein solcher Loop zu "Broadcast Storms" führen. In einem Netzwerk mit mehreren Switches können Broadcast Storms auch durch Broadcasts über einfache Verbindungen angestoßen werden. Erhalte ein Switch ein an eine Broadcast oder Multicast MAC-Adresse gerichtetes Paket oder eine ihm unbekannte MAC-Adresse, flute er alle Ports außer den des Senders mit einem Broadcast. Wird über mehrere Switches ein Loop gebildet, broadcasten sie im Kreis. Während bei Routing Loops nur beteiligte Knoten belastet werden, erreichen die Broadcasts auch andere Knoten.   
+Referenz: https://www.catchpoint.com/network-admin-guide/switching-loops
+
+BATMAN advanced habe Loop Protection im Header jedes Payloads, welche beim Zwischenschalten einer Bridge jedoch verloren gehe. Vom Fall falscher Verkabelung abgesehen, ist die Entstehung von Loops ein logisches Problem. Beiträge im Internet empfehlen verschiedene Tools, um Netzwerktopologien zu analysieren und Loops zu entdecken, sowie Schutzmechanismen. catchpoint nennt das Spanning Tree Protocol (STP) den Standard, um Switch Loops zu verhindern. Üblicherweiser werde jeder Switch so konfiguriert, dieses Protokoll zu verwenden.
+BATMAN advanced implementiert aber seine eigene Lösung, da STP nicht über link qualities Bescheid wisse und sich nicht eigne. STP identifiziert redundante Wege über die Netzwerktopologie, welche sich jedoch bei einem Mesh-Netzwerk stetig ändern kann. Bridge Loop Avoidance lässt sich für eine bestehende `bridge` mit `batctl bl 1` aktivieren.
+Referenzen: https://www.open-mesh.org/projects/batman-adv/wiki/Bridge-loop-avoidance
+
+BATMAN's Bridge Loop Avoidance funktioniert ebenfalls über einen Header und sieht vor, dass Clients am Mesh von sogenannte Backbone Gateways für sich beansprucht werden. Diese meinen Mesh-Knoten, die ebenfalls mit einem LAN verbunden sind. Jeder Client kann nur von einem Backbone Gateway beansprucht werden, welcher sich für ihre Broadcasts vorantwortlicht.
+Genauere Informationen zum Konzept und eine Versuchsreihe: https://www.open-mesh.org/projects/batman-adv/wiki/Bridge-loop-avoidance-II
+
+
+Zwischenablage
+neighbor/originator tables: https://www.open-mesh.org/projects/batman-adv/wiki/Understand-your-batman-adv-network
