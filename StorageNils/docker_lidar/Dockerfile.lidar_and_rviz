@@ -1,0 +1,80 @@
+FROM ros:jazzy
+
+# install ros package
+
+# Stupid old key.. Amazingly, we don't have curl so I added 
+# the ros.key by hand.
+COPY ros.key /usr/share/keyrings/ros-archive-keyring.gpg
+RUN rm -f /etc/apt/sources.list.d/ros2.list /etc/apt/sources.list.d/ros2-latest.list
+RUN echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu noble main" \
+    > /etc/apt/sources.list.d/ros2.list
+RUN apt-get update && apt-get install -y python3
+
+# Get ldrobot repo
+WORKDIR /lidar_node_ws
+RUN git clone https://github.com/Myzhar/ldrobot-lidar-ros2.git
+RUN sudo apt install libudev-dev
+RUN cd ldrobot-lidar-ros2/scripts/ && \
+    ./create_udev_rules.sh
+RUN rm -rf /var/lib/apt/lists/* && apt-get update
+
+
+### Build ###
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.edge.kernel.org/ubuntu|g' /etc/apt/sources.list && \
+    apt-get update
+
+# Slam Toolbox apparently doesn't like to be installed with the others.. 
+RUN apt-get install -y ros-jazzy-slam-toolbox
+
+RUN cd /lidar_node_ws/ && \
+rosdep install --from-paths . --ignore-src -r -y
+
+SHELL ["/bin/bash", "-c"]
+RUN source /opt/ros/jazzy/setup.bash && \
+colcon build --symlink-install --cmake-args=-DCMAKE_BUILD_TYPE=Release
+
+RUN echo source $(pwd)/install/local_setup.bash >> ~/.bashrc
+RUN apt-get install -y python3 python3-pip
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-dri \
+    libgl1 \
+    usbutils
+
+# Entry point
+COPY entrypoints/entry.py /lidar_node_ws/entry/
+RUN chmod +x /lidar_node_ws/entry/entry.py
+ENTRYPOINT [ "python3", "/lidar_node_ws/entry/entry.py" ]
+
+
+# Run with Display forward:
+# Providing a display
+# xhost +local:docker
+# sudo docker run --device=/dev/ttyUSB0:/dev/ldlidar -it --rm -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix:rw rviz_only_node
+
+# Adding USB:
+# 10c4:ea60 (list usb ports with lsusb, look in VM what is connected)
+# -> Bus 001, Device 003: dev/bus/usb/001/003
+# This seemed wrong somehow. The right way to do it is to grab the usb device,
+# and forward it to /dev/ldlidar. That's what's expected by the installed node.
+# --device=/dev/ttyUSB0:/dev/ldlidar
+
+# In rviz, selecting Map error in Dropdown, then adding the topic from the scan
+
+
+
+# So I had extreme difficulties getting the image running:
+# First, the provided keys for some of the repositories linked in the ros-base-image
+# are not valid (or present?) anymore. Which is weird - because I just downloaded the 
+# the keys manually. Anyways; solution was to copy that key manually and adding it to
+# the keyring 
+# Then we can download the actually repo which we're building in the build process ourselfes
+#   OF COURSE this also didn't work by itself. I myself got a 403 Forbidden. I think
+# This was because the site thought I was a bot, as downloading them through the browser
+# worked just fine.
+# After that, it went relativly smooth. We install a lot of stuff, it's not realy tidy.
+# At least it's working now :)
+
+# CMD
+
+# sudo docker build -t lidar_node -f Dockerfile.lidar . 
+# sudo docker run --device=/dev/ttyUSB0:/dev/ldlidar -it --rm -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix:rw lidar_node
