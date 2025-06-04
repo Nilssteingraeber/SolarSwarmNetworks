@@ -50,3 +50,6 @@ Vor der Migration sollte die bestehende Konfiguration entfernt werden:
 ```bash
 sudo rm /etc/apt/sources.list.d/ros2.list 
 sudo rm /usr/share/keyrings/ros-archive-keyring.gpg
+```
+
+#### Reference [ROS Signing Key Migration Guide](https://discourse.ros.org/t/ros-signing-key-migration-guide/43937#p-93537-how-do-i-migrate-after-june-1st-4)
