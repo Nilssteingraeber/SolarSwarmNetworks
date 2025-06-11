@@ -1,4 +1,4 @@
-##Idee zum Webfrontend/Backend
+## Idee zum Webfrontend/Backend
 
 Die Idee lautet, dass wir auf der Hauptseite die Nodes sehen und die Roboter und die Informationen mit wem diese verbunden sind. Siehe Skizze. Es soll auch dargestellt werden:
 
