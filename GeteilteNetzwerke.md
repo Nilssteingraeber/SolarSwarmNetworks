@@ -113,7 +113,7 @@ Installation von batctl: `sudp apt update && sudo apt install batctl`
 Laden des Kernel-Moduls: `sudo modprobe batman-adv`
 Erstellen eines bat0-Interfaces:
 ```bash
-    sudo iwconfig wlp0s20f3 mode ibss # WLAN muss ausgeschaltet sein, sonst Fehler "Driver or resource busy"
+    sudo iwconfig wlp0s20f3 mode ad-hoc # WLAN muss ausgeschaltet sein, sonst Fehler "Driver or resource busy"
     sudo iwconfig wlp0s20f3 essid my-mesh-network # Optional freq 2412M anhängen
     sudo ip link set up mtu 1532 dev wlp0s20f3 # hiervor WLAN wieder einschalten
     sudo batctl if add wlp0s20f3
@@ -145,7 +145,6 @@ Referenz: https://www.open-mesh.org/projects/batman-adv/wiki/Using-batctl
 
 Mit `batctl` können wir sicherstellen, dass unser Netzwerk funktioniert und Knoten darin sichtbar sind. Das BATMAN Team bietet auch eine Troubleshooting Sektion mit häufig aufkommenden Problemen und Lösungen: https://www.open-mesh.org/projects/batman-adv/wiki/Troubleshooting
 
-## Aggregation
 ## Loops
 In der Netzwerktechnik betrachet man zwei Arten von Loops: Routing Loops (Schicht 3) und Bridge/Switch (Schicht 2) Loops. Beide beschreiben eine Situation, in der ein Paket immer wieder zwischen den selben Knoten verschickt wird und nie sein vorhergesehenes Ziel erreicht. Dieses Paket verbraucht Bandbreite solange es lebt und kann zu einer erheblicher Verlangsamung bis hin zu einem Stillstand einiger Knoten oder im schlimmsten Fall des ganzen Netzwerks führen. Die beiden Arten unterscheiden sich darin, wo und wie ein Loop entstehen kann.
 
@@ -155,13 +154,23 @@ Referenz: https://www.geeksforgeeks.org/what-is-routing-loop-and-how-to-avoid-ro
 **Bridge Loops** können durch redundante Wege zu einem einem Ziel entstehen. Zum einen können falsche Verkabelung oder Konfiguration dafür verantwortlich sein. Werden zwei Ports eines Switches mit einem Kabel oder zwei Switches (welche auch Bridges sind) redundant miteinander verbunden, könne ein solcher Loop zu "Broadcast Storms" führen. In einem Netzwerk mit mehreren Switches können Broadcast Storms auch durch Broadcasts über einfache Verbindungen angestoßen werden. Erhalte ein Switch ein an eine Broadcast oder Multicast MAC-Adresse gerichtetes Paket oder eine ihm unbekannte MAC-Adresse, flute er alle Ports außer den des Senders mit einem Broadcast. Wird über mehrere Switches ein Loop gebildet, broadcasten sie im Kreis. Während bei Routing Loops nur beteiligte Knoten belastet werden, erreichen die Broadcasts auch andere Knoten.   
 Referenz: https://www.catchpoint.com/network-admin-guide/switching-loops
 
-BATMAN advanced habe Loop Protection im Header jedes Payloads, welche beim Zwischenschalten einer Bridge jedoch verloren gehe. Vom Fall falscher Verkabelung abgesehen, ist die Entstehung von Loops ein logisches Problem. Beiträge im Internet empfehlen verschiedene Tools, um Netzwerktopologien zu analysieren und Loops zu entdecken, sowie Schutzmechanismen. catchpoint nennt das Spanning Tree Protocol (STP) den Standard, um Switch Loops zu verhindern. Üblicherweiser werde jeder Switch so konfiguriert, dieses Protokoll zu verwenden.
+BATMAN advanced hat Loop Protection im Header jedes Payloads, welche beim Zwischenschalten einer Bridge jedoch verloren gehe. Vom Fall falscher Verkabelung abgesehen, ist die Entstehung von Loops ein logisches Problem. Beiträge im Internet empfehlen verschiedene Tools, um Netzwerktopologien zu analysieren und Loops zu entdecken, sowie Schutzmechanismen. catchpoint nennt das Spanning Tree Protocol (STP) den Standard, um Switch Loops zu verhindern. Üblicherweiser werde jeder Switch so konfiguriert, dieses Protokoll zu verwenden.
 BATMAN advanced implementiert aber seine eigene Lösung, da STP nicht über link qualities Bescheid wisse und sich nicht eigne. STP identifiziert redundante Wege über die Netzwerktopologie, welche sich jedoch bei einem Mesh-Netzwerk stetig ändern kann. Bridge Loop Avoidance lässt sich für eine bestehende `bridge` mit `batctl bl 1` aktivieren.
 Referenzen: https://www.open-mesh.org/projects/batman-adv/wiki/Bridge-loop-avoidance
 
 BATMAN's Bridge Loop Avoidance funktioniert ebenfalls über einen Header und sieht vor, dass Clients am Mesh von sogenannte Backbone Gateways für sich beansprucht werden. Diese meinen Mesh-Knoten, die ebenfalls mit einem LAN verbunden sind. Jeder Client kann nur von einem Backbone Gateway beansprucht werden, welcher sich für ihre Broadcasts vorantwortlicht.
 Genauere Informationen zum Konzept und eine Versuchsreihe: https://www.open-mesh.org/projects/batman-adv/wiki/Bridge-loop-avoidance-II
 
+### Erste Labortests
+Im Labor des Instituts für Elektromobilität wurden zwei NUCs mit den Skripten und in verschiedenen WLAN-Netzen getestet, um erfolgreich ein erstes Mesh-Netzwerk mit batman-adv einzurichten:
+
+Zuerst wurde auf beiden `batman-adv_setup1.bash` ausgeführt, während sie mit dem Gastnetzwerk der Hochschule verbunden waren. Wie zuvor warf der Befehl `sudo iw dev wlp0s20f3 ibss join my-mesh-network` die Meldung `command failed: Operation not supported (-95)` `RTNETLINK answers: Operation not permitted` (behoben mit `sudo` vor `ip link set up dev bat0`), führte aber die darauffolgenden Befehle aus, sodass das Netzwerkinterface `bat0` eingerichtet und IP-Adressen vergeben wurden. Ihre IP-Adressen lauteten `169.254.15.146` und `169.254.15.142`, ihre MAC-Adressen `30:0025:52:f7:10` und `04:ea:56:89:84:92`. Das Skript istterminierte nach der IP-Ausgabe von avahi nicht, weswegen jeweils in einem weiteren Terminal mit `batctl ping <MAC-Adresse>` die Erreichbarkeit der NUCs getestet wurde. Diese konnten sich nicht finden. Das selbe Ergebnis wurde mit `batman-adv_setup2.bash` erreicht, jedoch ohne die Fehlerausgabe des `join`-Befehls.
+
+Der Betreuer vermutete, dass die Firewall der Hochschule die Pings blockieren könnte. Daher wurden die Tests im ungeschützten Netzwerk des Instituts wiederholt. Diesmal terminierten beide Skripte und gaben eine PID für den BATMAN Daemon aus.
+
+Da unser Mesh-netzwerk ohne Infrastruktur bestehen soll, wurden die Tests ohne Verbindung zu einem WLAN-Netz wiederholt. Das Ergebnis war das selbe wie beim ersten Versuch.
+
 
 Zwischenablage
 neighbor/originator tables: https://www.open-mesh.org/projects/batman-adv/wiki/Understand-your-batman-adv-network
+https://www.kernel.org/doc/Documentation/networking/batman-adv.txt

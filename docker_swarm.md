@@ -4,8 +4,8 @@ Um später zu zeigen, dass unser Netzwerk funktioniert, wollen wir mehrere Knote
 Referenz: https://docs.docker.com/engine/swarm/key-concepts/
 
 ## Docker init und join
-Ein Schwarm wird mit `docker swarm init` gestartet. `init` gibt eine Bezeichnung des erstellten Knoten und zwei Join-Tokens aus. Diese Tokens werden anschließend benötigt, um weitere Worker oder Manager hinzuzufügen. Mit `docker swarm leave` kann der Schwarm verlassen werden, wobei der letzte Knoten `--force` verwenden muss, da der Docker Daemon es sonst verhindert. Bei Die offizielle Docker Dokumentation bietet eine Übersicht der Optionen, sowie ihrer Standardwerte. Hier ist eine Auswahl von Optionen, die für uns zum Testen relevant sein könnten:
-- `--listen-addr <IP-Adresse[:Port]>` spezifiziert eine IP-Adresse (und Port), auf der Worker Nachrochten von Managern lauschen. Statt einer IP-Adresse kann ein Netzwerk Interface angegeben werden.
+Ein Schwarm wird mit `docker swarm init` gestartet. `init` gibt eine Bezeichnung des erstellten Knoten und zwei Join-Tokens aus. Diese Tokens werden anschließend benötigt, um weitere Worker oder Manager hinzuzufügen. Mit `docker swarm leave` kann der Schwarm verlassen werden, wobei der letzte Knoten `--force` verwenden muss, da der Docker Daemon es sonst verhindert. Die offizielle Docker Dokumentation bietet eine Übersicht der Optionen, sowie ihrer Standardwerte. Hier ist eine Auswahl von Optionen, die für uns zum Testen relevant sein könnten:
+- `--listen-addr <IP-Adresse[:Port]>` spezifiziert eine IP-Adresse (und Port), auf der Worker Nachrichten von Managern lauschen. Statt einer IP-Adresse kann ein Netzwerkinterface angegeben werden.
 - `--advertise-addr <IP-Adresse[:Port]>` spezifiziert eine IP-Adresse (und Port), mit der Manager werben. Statt einer IP-Adresse kann ein Netzwerk Interface angegeben werden.
 - `--max-snapshots <Anzahl>` ist standardmäßig 0. `Anzahl` gibt an, wie viele alte Raft snapshots behalten werden. Sie halten den Zustand eines Clusters hält und sind zum Debuggen oder Wiederherstellen eines Clusters nützlich.
 - `--snapshot-interval <Integer>` ist standardmäßig 10000. `Interger` gibt an, nach wie vielen Raft-Logs ein neuer Raft snapshot gemacht wird. 
@@ -45,6 +45,9 @@ Ein Beispiel mit `--mount`:
 ```
 Referenz: https://docs.docker.com/reference/cli/docker/service/create/
 
+Mit `docker service ps <Service>` werden alle Tasks und die ausführenden Knoten tabellarisch dargestellt.
+https://docs.docker.com/reference/cli/docker/service/ps/
+
 Bei `docker service update` wird an die Optionen `--mount`, `--secret`, `--network` entweder `-add` oder `-rm` angehängt. Beispiel: `--mount-add`
 https://docs.docker.com/reference/cli/docker/service/update/
 
@@ -57,6 +60,43 @@ Referenz: https://docs.docker.com/reference/cli/docker/service/scale/
 Die einzelnen Tasks eines Services lassen sich mit `docker service ps <Service>` tabellarisch anzeigen. Die Ausgabe lässt sich zusätzlich mit `--filter` und `--format` bearbeiten.
 Zum Formatieren und weitere Optionen: https://docs.docker.com/reference/cli/docker/service/scale/
 
+# Einfacher Test
+Allgemeiner Ablauf:
+- Drei Knoten werden mit `docker swarm init` initialisiert
+- Auf einem Knoten wird mit `docker swarm join-token worker` der Befehl ausgegeben, mit dem andere Knoten dem Schwarm beitreten können
+- Spezifischer Test
+- Nach und nach Knoten entfernen mit `docker swarm leave`; mit `--force` beim letzten
+
+Verwendetes Image:
+- ros:jazzy
+- `docker service create --name jazzy ros:jazzy`
+
+Erster Test:
+- Manager initialisiert mit `--availability drain`
+- Ein Service gestartet mit `--replicas 1`
+- Mit `docker service <Service>` prüfen, welcher Knoten den Service ausführt
+- Ausführenden Knoten mit `docker node update --availability pause <Knoten>` stoppen
+- Mit `docker service ps <Service>` erneut prüfen
+- Mit `docker service scale <Service>=3` Replikationen erhöhen, dann `docker service ps <Service>`
+- Falls nicht verteilt, Last mit `docker service update --replicas-max-per-node 1` verteilen
+
+Zweiter Test:
+- Nachdem alle Knoten als Worker beigetreten sind, verlässt der Manager mit `docker swarm leave --force` den Schwarm
+- Mit `docker node ls` die Knoten inspizieren
+
+Dritter Test:
+- Ein Knoten tritt als Manager bei
+- Der erste Manager verlässt den Schwarm
+- Der neue Manager startet einen Service mit `--replicas 3 --replicas-max-per-node 1`
+- In `docker service ls` sollten 2/3 aktiv sein
+- Erste Manager versucht, mit seinem eigenen Token wieder beizutreten
+
+# Test mit ROS2 Service
 
 Zwischenablage
+    "Because manager nodes are meant to be a stable component of the infrastructure, you should use a fixed IP address for the advertise address to prevent the swarm from becoming unstable on machine reboot.
+
+    If the whole swarm restarts and every manager node subsequently gets a new IP address, there is no way for any node to contact an existing manager. Therefore the swarm is hung while nodes try to contact one another at their old IP addresses.
+
+    Dynamic IP addresses are OK for worker nodes."
 Offizieller Guide zum Administrieren und Warten eines Docker Swarms: https://docs.docker.com/engine/swarm/admin_guide/
