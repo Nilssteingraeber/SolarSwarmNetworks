@@ -21,3 +21,5 @@ sudo iw dev ah0 ibss join TestAdhoc 2412
 sudo iw dev <interface> ibss join TestAdhoc 2412
 
 
+Bezogen habe ich mich auf diese Quelle: https://wireless.docs.kernel.org/en/latest/en/users/documentation/iw/vif.html#ibss-ad-hoc
+(Wird benötigt für Batman-adv)
