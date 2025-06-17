@@ -1,0 +1,23 @@
+# Folgende Problemstellung: Fehlermeldung beim joinen eines Ad-Hoc Netzwerkes (Command failed: Operation Not Supported (-95)
+# sudo iw dev <interface> ibss join <SSID> 2412
+
+# Folgende Schritte haben das Problem behoben.
+
+# Stop interfering Services
+sudo systemctl stop NetworkManager
+sudo killall wpa_supplicant
+
+# Reset interface 
+sudo ip link set <interface> down
+sudo iw dev <interface> set type ibss
+sudo ip link set <interface> up
+
+# Setting up Ad-Hoc
+sudo iw phy phy0 interface add ah0 type ibss
+sudo ip link set ah0 up
+sudo iw dev ah0 ibss join TestAdhoc 2412
+
+# Join Second/Other Devices
+sudo iw dev <interface> ibss join TestAdhoc 2412
+
+
