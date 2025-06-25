@@ -37,7 +37,7 @@ Für eine konkrete Umsetzung benötigen wir ein Routing-Protokoll, sodass sich N
 Referenz: https://ve.scielo.org/pdf/rfiucv/v28n1/art02.pdf
 
 Wir orientieren uns daher an Trends, Empfehlungen und Zugänglichkeit der Protokolle. Ein Trend lässt sich in der Freifunk Gemeinschaft erkennen, welche sich am Betreiben von unabhöngigen Mesh-Netzwerken beteiligen. In diesen sei OLSR lange Zeit das "Standardprotokoll", doch gebe es mittlerweile konkurrierende Alternativen. B.A.T.M.A.N. und Babel werden als Beispiele aufgeführt, wobei B.A.T.M.A.N. immer beliebter werde. freifunk.net hält eine besondere Stärke dessen fest:
-    "Dieses kann flexibler mit den spontanen Veränderungen in Meshnetzwerken umgehen, denn die Information über die besten Verbindungen zwischen allen B.A.T.M.A.N.-Knoten ist auf das gesamte Netz verteilt." 
+> Dieses kann flexibler mit den spontanen Veränderungen in Meshnetzwerken umgehen, denn die Information über die besten Verbindungen zwischen allen B.A.T.M.A.N.-Knoten ist auf das gesamte Netz verteilt.
 Referenz: https://freifunk.net/worum-geht-es/technik-der-community-netzwerke/
 
 B.A.T.M.A.N. oder sein Nachfahre B.A.T.M.A.N. advanced werden ebenfalls in Foren als auch von ChatGPT empfohlen. Es sei leicht einzurichten und benötige keine manuelle IP-Konfiguration. Im Weiteren basieren wir daher unser Netzwerk auf diesem Routing-Protokoll.
@@ -53,12 +53,12 @@ Es ist zu dem als Kernel-Modul implementiert worden, um im Kernel Modus effizien
 Genaueres zum Hinzufügen mehrerer: https://www.open-mesh.org/projects/batman-adv/wiki/Tweaking
 
 Aus dem konzeptuellen Design von BATMAN-adv ergeben sich einige Eigenschaften, von denen das BATMAN Team berichet:
-- network-layer agnostic - you can run whatever you wish on top of batman-adv: IPv4, IPv6, DHCP, IPX ..
-- nodes can participate in a mesh without having an IP
-- easy integration of non-mesh (mobile) clients (no manual HNA fiddling required)
-- roaming of non-mesh clients
-- optimizing the data flow through the mesh (e.g. interface alternating, multicast, forward error correction, etc)
-- running protocols relying on broadcast/multicast over the mesh and non-mesh clients (Windows neighborhood, mDNS, streaming, etc)
+> - network-layer agnostic - you can run whatever you wish on top of batman-adv: IPv4, IPv6, DHCP, IPX ..
+> - nodes can participate in a mesh without having an IP
+> - easy integration of non-mesh (mobile) clients (no manual HNA fiddling required)
+> - roaming of non-mesh clients
+> - optimizing the data flow through the mesh (e.g. interface alternating, multicast, forward error correction, etc)
+> - running protocols relying on broadcast/multicast over the mesh and non-mesh clients (Windows neighborhood, mDNS, streaming, etc)
 Referenz: https://www.open-mesh.org/projects/batman-adv/wiki/Wiki
 
 Ein Mesh kann mit Gateways und nicht-Knoten Clients (sogenannten Nachbarn) interagieren und unterstützt Roaming. Gateways bieten die möglichkeit, dass das Netzwerk oder Clients mit der Außenwelt interagieren können. Da unsere Roboter aus Sicherheitsgründen keinen Internetzugriff haben werden, benötigen wir keine. Clients in unser Netzwerk einzubinden könnte zum Aufnehmen von Sensorddaten oder Überwachen des Netzwerks interessant sein. Die offizielle Dokumentation bietet Hilfen, um diese Features zu implementieren, zu verstehen und zu optimieren.
@@ -72,8 +72,7 @@ Eine Übersicht der erweiterten Features von BATMAN advanced bietet eine Präsen
 Für den Start mit BATMAN-adv auf Linux benötigen wird das Kernel-Modul `batman-adv` und das Kommandozeilentool `batctl` zum Konfigurieren und Debuggen. Das Kernel-Modul ist im Kernel der neueren Linux Distributionen bereits enthalten. Es kann mit `sudo modprobe batman-adv` geladen werden. Zum automatischen Laden nach Systemstart bietet open-mesh eine Anleitung an: https://www.open-mesh.org/projects/batman-adv/wiki/Debian_batman-adv_AutoStartup
 
 Zur Sicherheit sei angemerkt: Im FAQ zu batman-adv wird zu Beschränkungen folgendes angemerkt:
-> "Batman has no security implemented. Also assigning IP addresses to the node(s) is not Batman's task.
-> You may want to use underlying security mechanisms, like: IBSS RSN."
+> Batman has no security implemented. Also assigning IP addresses to the node(s) is not Batman's task. You may want to use underlying security mechanisms, like: IBSS RSN.
 Referenz: https://www.open-mesh.org/projects/batman-adv/wiki/Faq
 Wir werden uns nicht mit der Sicherheit dieses Protokolls beschäftigen. Auf batman-adv basierende Projekte sollten Schwächen und Lösungen weiter untersucht werden.
 
@@ -161,14 +160,97 @@ Referenzen: https://www.open-mesh.org/projects/batman-adv/wiki/Bridge-loop-avoid
 BATMAN's Bridge Loop Avoidance funktioniert ebenfalls über einen Header und sieht vor, dass Clients am Mesh von sogenannte Backbone Gateways für sich beansprucht werden. Diese meinen Mesh-Knoten, die ebenfalls mit einem LAN verbunden sind. Jeder Client kann nur von einem Backbone Gateway beansprucht werden, welcher sich für ihre Broadcasts vorantwortlicht.
 Genauere Informationen zum Konzept und eine Versuchsreihe: https://www.open-mesh.org/projects/batman-adv/wiki/Bridge-loop-avoidance-II
 
-### Erste Labortests
+## Erste Labortests zu batman-adv
 Im Labor des Instituts für Elektromobilität wurden zwei NUCs mit den Skripten und in verschiedenen WLAN-Netzen getestet, um erfolgreich ein erstes Mesh-Netzwerk mit batman-adv einzurichten:
 
-Zuerst wurde auf beiden `batman-adv_setup1.bash` ausgeführt, während sie mit dem Gastnetzwerk der Hochschule verbunden waren. Wie zuvor warf der Befehl `sudo iw dev wlp0s20f3 ibss join my-mesh-network` die Meldung `command failed: Operation not supported (-95)` `RTNETLINK answers: Operation not permitted` (behoben mit `sudo` vor `ip link set up dev bat0`), führte aber die darauffolgenden Befehle aus, sodass das Netzwerkinterface `bat0` eingerichtet und IP-Adressen vergeben wurden. Ihre IP-Adressen lauteten `169.254.15.146` und `169.254.15.142`, ihre MAC-Adressen `30:0025:52:f7:10` und `04:ea:56:89:84:92`. Das Skript istterminierte nach der IP-Ausgabe von avahi nicht, weswegen jeweils in einem weiteren Terminal mit `batctl ping <MAC-Adresse>` die Erreichbarkeit der NUCs getestet wurde. Diese konnten sich nicht finden. Das selbe Ergebnis wurde mit `batman-adv_setup2.bash` erreicht, jedoch ohne die Fehlerausgabe des `join`-Befehls.
+Zuerst wurde auf beiden `batman-adv_setup1.bash` ausgeführt, während sie mit dem Gastnetzwerk der Hochschule verbunden waren. Wie zuvor warf der Befehl `sudo iw dev wlp0s20f3 ibss join my-mesh-network` die Meldung `command failed: Operation not supported (-95)` `RTNETLINK answers: Operation not permitted` (Letzteres behoben mit `sudo` vor `ip link set up dev bat0`), führte aber die darauffolgenden Befehle aus, sodass das Netzwerkinterface `bat0` eingerichtet und IP-Adressen vergeben wurden. Ihre IP-Adressen lauteten `169.254.15.146` und `169.254.15.142`, ihre MAC-Adressen `30:0025:52:f7:10` und `04:ea:56:89:84:92`. Das Skript terminierte nach der IP-Ausgabe von avahi nicht, weswegen jeweils in einem weiteren Terminal mit `batctl ping <MAC-Adresse>` die Erreichbarkeit der NUCs getestet wurde. Diese konnten sich nicht finden. Das selbe Ergebnis wurde mit `batman-adv_setup2.bash` erreicht, jedoch ohne die Fehlerausgabe des `join`-Befehls.
 
-Der Betreuer vermutete, dass die Firewall der Hochschule die Pings blockieren könnte. Daher wurden die Tests im ungeschützten Netzwerk des Instituts wiederholt. Diesmal terminierten beide Skripte und gaben eine PID für den BATMAN Daemon aus.
+Der Betreuer vermutete, dass die Firewall der Hochschule die Pings blockieren könnte. Daher wurden die Tests im ungeschützten Netzwerk des Instituts wiederholt. Diesmal terminierten beide Skripte und gaben eine PID aus. Da unser Mesh-netzwerk ohne Infrastruktur bestehen soll, wurden die Tests ohne Verbindung zu einem WLAN-Netz wiederholt. Das Ergebnis war das selbe wie beim ersten Versuch.
 
-Da unser Mesh-netzwerk ohne Infrastruktur bestehen soll, wurden die Tests ohne Verbindung zu einem WLAN-Netz wiederholt. Das Ergebnis war das selbe wie beim ersten Versuch.
+### Troubleshooting
+In der Troubleshooting Sektion der offiziellen BATMAN Dokumentation wird dazu geraten, die Komplexität des Setups zu minimieren. Durch auslassen verschiedener Parameter gelang jeoch kein fehlerfreier Start. Skript 1 mit `iw` gab weiterhin Fehlercode`-95` aus und Skript 2 Fehlermeldungen im Kernellog mit `sudo dmesg`:
+```
+    [   74.041544] iwlwifi 0000:00:14.3: Failed to remove station. Id=2
+    [   74.041557] iwlwifi 0000:00:14.3: Failed sending remove station
+    [   74.041564] iwlwifi 0000:00:14.3: Failed to send flush command (-5)
+
+    [   74.045924] iwlwifi 0000:00:14.3: Failed to remove station. Id=3
+    [   74.045935] iwlwifi 0000:00:14.3: Failed sending remove station
+```
+Kein Fehler aber Hinweis für die MTU:
+```
+    [   76.074364] batman_adv: bat0: The MTU of interface wlp0s20f3 is too small (1532) to handle the transport of batman-adv packets. Packets going over this interface will be fragmented on layer2 which could impact the performance. Setting the MTU to 1560 would solve the problem.
+```
+
+Die Dokumentation des Kernel-Moduls bietet Anweisungen, um batman-adv zu konfigurieren, aber es gelang nicht, die angegebenen Schritte zu reproduzieren.
+Kernel-Modul: https://www.kernel.org/doc/Documentation/networking/batman-adv.txt
+
+Hilfen und Diskussionen im Internet wiesen häufig auf die offizielle Dokumentation zurück oder bezogen sich auf andere Systeme oder Router-Setups mit der Linux-Distribution OpenWRT. Insgesamt ließ sich nach geraumer Zeit keine auf unser Problem angepasste Lösung finden.
+
+### Troubleshooting mit ChatGPT
+Zuletzt wurde versucht, mit ChatGTP zu einer Lösung zu gelangen. Im Folgenden soll der grobe Ablauf des Austauschs protokolliert werden.
+
+Ziel des Austauschs war die Einrichtung und Inbetriebnahme von batman-adv im IBSS-/Mesh-Netzwerkbetrieb unter Linux. Zu Beginn befanden uns in der Ausgangssituation, dass die Einrichtung nach dem Quick-Startup-Guide auf dem NUC nicht gelungen war, im Labor jedoch ein Test über ein bestehendes WLAN. Als WLAN-Karte verfügt der NUC über eine Intel iwlwifi.
+
+ChatGPT gab den Anstoß, dass der Netzwerkmanager das konfigurierte Interface zurücksetzen könnte. Im WLAN des Labors habe er die WLAN-Karte nicht aktiv verwaltet, wodurch das Skript problemlos ausgeführt wurde. Beim Start ohne ein anderes aktives Interface könnte das konfigurierte Interface `wlp0s20f3` automtatisch in den `managed`-Modus versetzt werden. Auch könnten Stromsparmododi oder keine Initialisierung Grund dafür sein, dass das Interface in keinem stabilen Zustand für `ibss join` ist.
+
+Mit diesen Vermutungen bot ChatGPT mehrere Ansätze an, die nicht direkt zu keiner Lösung führten. Darunter war das Einführen einer DummySSID und das Resetten des Interfaces auf `managed`. Zuletzt kam der Anstoß, dass der Firmware-Zustand des `iwlwifi`-Treibers das Problem sein könnte und dass der dieser Chip dafür berüchtigt sei. Ein Reset mit `sudo modprobe -r iwlwifi` und `sudo modprobe iwlwifi` würde die Firmware vollständig neu initialisieren. Weiter seien Pausen mit `sleep` hilfreich, um den Komponenten Zeit zu geben und Race Conditions zu verhindern.
+
+Nach weiterem Torubleshooting wurde `wlp0s20f3` mit `promisc on` betrieben. Im `promiscuous mode` verarbeitet die Netwerkkarte auch Datenverkehr, der nicht an sie gerichtet ist.
+
+Endgültiges Skript `batman-adv_setup3.bash`:
+```bash
+    #!/bin/bash
+
+    # Kernel-Module (neu) laden
+    sudo modprobe batman_adv
+    sudo modprobe -r iwlwifi
+    sudo modprobe iwlwifi
+    sleep 1
+
+    # Reset Interface
+    sudo ip link set wlp0s20f3 down
+    sudo iwconfig wlp0s20f3 mode managed
+    sudo ip link set wlp0s20f3 up
+    sleep 1
+
+    # Bridge Karte in aktien Zustand (Fehler)
+    # sudo iw dev wlp0s20f3 conncect -w DummySSID
+    # sleep 2
+    sudo ip link set wlp0s20f3 down
+
+    # Setze auf IBSS
+    sudo iwconfig wlp0s20f3 mode ad-hoc
+    sudo ip link set wlp0s20f3 up mtu 1560
+    sudo ip link set wlp0s20f3 promisc on
+    sleep 1
+
+    # Join IBSS
+    sudo iw dev wlp0s20f3 ibss join mymesh 2412
+
+    # bat0 hinzufügen
+    sudo batctl if add wlp0s20f3
+    sudo ip link set up dev bat0
+
+    # IP zuteilen
+    sudo avahi-autoipd bat0
+```
+![Eigene MAC mit batctl o nicht sichtbar](<batman-adv/batctl o zeigt sich selbst nicht.png>)
+Mit einem Knoten ist es nicht möglich, mit `batctl ping`, `batctl o` oder `batctl n` zu prüfen, ob die Inbetriebnahme funktioniert. Folgende Ausgaben müssen stimmen, damit batman-adv richtig funktioniert:
+- `sudo batctl if` muss das verwendete Interface als `active` anzeigen
+- Unter `iw dev wlp0s20f3` müssen `ssid` und `type` stimmen
+- Unter `ip link [show wlp20f3]` müssen UP, LOWER_UP und eine MAC-Adresse zu sehen sein
+- Mit dem `-I` Flag muss ein Ping über das Interface `bat0` die von avahli-autoipd angezeigte IP-Adresse erreichbar sein
+
+![Ausgaben nach sauberem Start](<batman-adv/skript3_sauber nach Start.png>)
+![Erfolgreicher Ping](<batman-adv/skript3_erfolgreicher ping über bat0.png>)
+
+### Erneuter Labortest
+Mit zwei NUCS wurde `batman-adv_setup3.bash` erneut im Labor getestet.
+![Skript erfolgreich ausgeführt](<batman-adv/skript3_erfolgreich auf NUC aus Labor.png>)
+![iw info](<batman-adv/iw info richtig_NUC aus Labor.png>)
+![batctl o zeigt originator](<batman-adv/batctl o_zeigt originator aus Labor.png>)
+![batctl ping erreicht MAC-Adresse](<batman-adv/batctl ping_erreicht originator aus Labor.png>)
 
 
 Zwischenablage
