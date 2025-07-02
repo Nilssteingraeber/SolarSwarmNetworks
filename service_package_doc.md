@@ -72,8 +72,8 @@ Referenz: https://docs.ros.org/en/jazzy/Tutorials/Beginner-CLI-Tools/Understandi
 Die Node `echo_client` hat zwei Parameter:
 ```python
     # In __init__
-    self.declare_parameter('nid', 0, ParameterDescriptor(description='Eine nutzerdefinierte ID der Node'))`
-    self.declare_parameter('msg', 'Default message', ParameterDescriptor(description='Zu schickende Nachricht'))`
+    self.declare_parameter('nid', 0, ParameterDescriptor(description='Eine nutzerdefinierte ID der Node'))
+    self.declare_parameter('msg', 'Default message', ParameterDescriptor(description='Zu schickende Nachricht'))
 
     # In main
     nid = self.req.nid = self.get_parameter('nid').get_parameter_value()
@@ -115,6 +115,7 @@ Zu jedem Datentyp kann ein Array angelegt werden. Die offizielle Dokumentation b
 ```
 
 Übersicht der Datentypen:
+
 ![Tabelle der Datentypen](ros2_interface_datatypes.png)
 
 Referenz: https://docs.ros.org/en/jazzy/Concepts/Basic/About-Interfaces.html
@@ -185,6 +186,21 @@ Der Service zeigt etwa:
 
 Referenz: https://docs.ros.org/en/jazzy/Tutorials/Beginner-Client-Libraries/Single-Package-Define-And-Use-Interface.html
 
+## Parameter Tests
+Der `simple_client` schickt mehrmals eine Anfrage an den Service. Für diesen Test soll dies in einer Endlosschleife geschehen, um zur Laufzeit Parameter verändern und die Auswirkungen sehen zu können. Zum Starten der Nodes: `ros2 run service_demo simple_service` und `ros2 run service_demo simple_client`
 
-# to-do: Dateninterfaces in service_demo implementieren und dokumentieren
-# to-do: Service Tests
+Erster Test:
+- Ein Service und Client werden gestartet. Mit `ros2 param list` werden ihre Parameter ausgegeben.
+- Mit `ros2 param get <Node> <Parameter>` wird der Wert der `nid` des Clients ausgegeben.
+- Mit `ros2 param set <Node> <Parameter>` wird der Wert der `nid` des Clients auf `'1'` gesetzt. Die Ausgabe sollte sich verändern.
+- Mit `ros2 param set <Node> <Parameter>` wird der Wert der `msg` des Clients auf `Hello World` gesetzt. Erneut sollte sich die Ausgabe verändern.
+- Mit `ros2 param dump <Node> > param_test_dump.yaml` werden die Parameter-Werte gepseichert und der Client beendet.
+- Anschließend wird der Client mit `ros2 run service_demo simple_client --ros-args --params-file param_test_dump.yaml` neugestartet.
+- Die Ausgabe sollte wieder gleich sein. Mit `ros2 param get <Node> <Parameter>` können die Parameter-Werte nochmal geprüft werden.
+
+Zweiter Test:
+- Ein Service und ein Clients werden gestartet. Mit `ros2 param list` werden ihre Parameter ausgegeben.
+- Mit `ros2 param set <Node> <Parameter>` wird der Wert der `nid` des Clients auf `'1'` gesetzt.
+- Anschließend wird ein zweiter Client gestartet. Eventuell kommt es zu einem Konflikt, da beide `echo_test` heißen sollten.
+
+# to-do: Tests durchführen
