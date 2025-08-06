@@ -19,6 +19,7 @@ docker buildx create --use
 ```bash
 docker buildx build --platform linux/arm64/v8 -t username/ros2-jazzy-subscriber:arm64 --push .
 ```
+
 ```bash
 sudo docker pull robincoding97/ros2-jazzy-subsriber:arm64
 ```
@@ -62,10 +63,12 @@ docker run --rm ros2-jazzy-subscriber
 ## Raspberry PI 4 (Subscriber) ThinkPad (Publisher)
 
 ## Publisher
+
 ```bash
 docker run --rm -it --network host robincoding97/ros2-jazzy-publisher /bin/bash
 ```
 ## In the Dockerterminal
+
 ´´´bash
 source /opt/ros/jazzy/setup.bash
 source /ros2_ws/install/setup.bash
@@ -80,6 +83,7 @@ ros2 run examples_rclcpp_minimal_publisher publisher_member_function
 docker run --rm -it --network host robincoding97/ros2-jazzy-publisher:arm64 /bin/bash
 ```
 ## In the Dockerterminal
+
 ´´´bash
 source /opt/ros/jazzy/setup.bash
 source /ros2_ws/install/setup.bash
