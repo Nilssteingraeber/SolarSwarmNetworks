@@ -12,6 +12,14 @@
 ```bash
 sudo docker pull robincoding97/ros2-jazzy-subscriber:latest
 ```
+Doesn't work on arm64 (Raspberry PI 4) -> Do following steps on Machine that created Image:
+```bash
+docker buildx create --use
+```
+```bash
+docker buildx build --platform linux/arm64/v8 -t username/ros2-jazzy-subscriber:arm64 --push .
+```
+
 ## Step 2: Build the Docker Image
 
 ```bash
