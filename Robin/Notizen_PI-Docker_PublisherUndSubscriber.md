@@ -19,6 +19,9 @@ docker buildx create --use
 ```bash
 docker buildx build --platform linux/arm64/v8 -t username/ros2-jazzy-subscriber:arm64 --push .
 ```
+```bash
+sudo docker pull robincoding97/ros2-jazzy-subsriber:arm64
+```
 
 ## Step 2: Build the Docker Image
 
