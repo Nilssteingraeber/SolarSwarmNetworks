@@ -8,7 +8,10 @@
 - Build the workspace with `colcon build --symlink-install`.
 - Set the default command to run an **existing** subscriber executable (e.g., `subscriber_member_function`).
 - [Intruction to Docker-Inage missing]
-
+- Test:
+```bash
+sudo docker pull robincoding97/ros2-jazzy-subscriber:latest
+```
 ## Step 2: Build the Docker Image
 
 ```bash
