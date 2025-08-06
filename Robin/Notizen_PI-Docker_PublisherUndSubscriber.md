@@ -55,3 +55,35 @@ ros2 run examples_rclcpp_minimal_publisher publisher_member_function
 docker run --rm ros2-jazzy-subscriber
 ```
 
+## Extra Information: How to run Publisher and Subscriber
+## Raspberry PI 4 (Subscriber) ThinkPad (Publisher)
+
+## Publisher
+```bash
+docker run --rm -it --network host robincoding97/ros2-jazzy-publisher /bin/bash
+```
+## In the Dockerterminal
+´´´bash
+source /opt/ros/jazzy/setup.bash
+source /ros2_ws/install/setup.bash
+```
+
+```bash
+ros2 run examples_rclcpp_minimal_publisher publisher_member_function
+```
+
+## Subscriber
+```bash
+docker run --rm -it --network host robincoding97/ros2-jazzy-publisher:arm64 /bin/bash
+```
+## In the Dockerterminal
+´´´bash
+source /opt/ros/jazzy/setup.bash
+source /ros2_ws/install/setup.bash
+```
+
+```bash
+ros2 run examples_rclcpp_minimal_subscriber subscriber_member_function
+```
+
+
