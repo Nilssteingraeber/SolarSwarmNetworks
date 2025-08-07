@@ -69,8 +69,10 @@ docker run --rm -it --network host robincoding97/ros2-jazzy-publisher /bin/bash
 ```
 ## In the Dockerterminal
 
-´´´bash
+```bash
 source /opt/ros/jazzy/setup.bash
+```
+```bash
 source /ros2_ws/install/setup.bash
 ```
 
@@ -84,8 +86,11 @@ docker run --rm -it --network host robincoding97/ros2-jazzy-publisher:arm64 /bin
 ```
 ## In the Dockerterminal
 
-´´´bash
+```bash
 source /opt/ros/jazzy/setup.bash
+```
+
+```bash
 source /ros2_ws/install/setup.bash
 ```
 
