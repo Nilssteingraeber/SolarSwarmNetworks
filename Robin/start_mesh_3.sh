@@ -32,10 +32,11 @@ fi
 echo "Stopping network services..."
 sudo systemctl stop NetworkManager
 sudo systemctl stop wpa_supplicant
+sudo rfkill unblock wifi
 
 echo "Creating ad-hoc interface..."
-# Detect first available PHY
-PHY=$(sudo iw dev | grep -oP '^phy\d+' | head -n1)
+# Detect first available PHY with sudo for permissions and fixed regex
+PHY=$(sudo iw dev | grep -o '^phy#[0-9]\+' | head -n1)
 if [ -z "$PHY" ]; then
     echo "No Wi-Fi PHY found. Exiting."
     exit 1
@@ -44,15 +45,14 @@ fi
 # Find any interface currently bound to that PHY
 IFACE=$(sudo iw dev | awk -v phy="$PHY" '$1=="Interface"{print $2}' | head -n1)
 if [ -n "$IFACE" ]; then
-    echo "Removing existing interface $IFACE from $PHY..."
+    echo "Bringing down existing interface $IFACE..."
     sudo ip link set "$IFACE" down
-    sudo iw dev "$IFACE" del
+    # Do NOT delete wlan0 or main interface, just bring it down
 fi
 
-# Remove old ah0 if it exists
-sudo iw dev ah0 del 2>/dev/null
+# Remove old ah0 if it exists (ignore errors)
+sudo iw dev ah0 del 2>/dev/null || true
 
-# Add ah0 as IBSS
 echo "Adding ah0 to $PHY..."
 sudo iw phy "$PHY" interface add ah0 type ibss
 sudo ip link set ah0 up
@@ -65,4 +65,3 @@ sudo batctl if add ah0
 sudo ip link set up dev bat0
 
 echo "Mesh setup complete."
-
