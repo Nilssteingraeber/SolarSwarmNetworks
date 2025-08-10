@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Helper function to check & install dependencies
 install_if_missing() {
     if ! command -v "$1" &>/dev/null; then
         echo "Installing $1..."
@@ -16,7 +15,6 @@ install_if_missing iw iw
 install_if_missing ip iproute2
 install_if_missing batctl batctl
 
-# Check if batman-adv module is loaded
 if ! lsmod | grep -q batman_adv; then
     echo "Loading batman-adv kernel module..."
     sudo modprobe batman-adv || {
@@ -34,34 +32,36 @@ sudo systemctl stop NetworkManager
 sudo systemctl stop wpa_supplicant
 sudo rfkill unblock wifi
 
-echo "Creating ad-hoc interface..."
-# Detect first available PHY with sudo for permissions and fixed regex
-PHY=$(sudo iw dev | grep -o '^phy#[0-9]\+' | head -n1)
-if [ -z "$PHY" ]; then
-    echo "No Wi-Fi PHY found. Exiting."
+# Find first non-loopback, non-batman interface
+# Exclude lo, bat0, bat1, mesh0, ah0, etc.
+INTERFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -Ev '^(lo|bat[0-9]*|mesh0|ah0)$' | head -n1)
+
+if [ -z "$INTERFACE" ]; then
+    echo "No suitable network interface found. Exiting."
     exit 1
 fi
 
-# Find any interface currently bound to that PHY
-IFACE=$(sudo iw dev | awk -v phy="$PHY" '$1=="Interface"{print $2}' | head -n1)
-if [ -n "$IFACE" ]; then
-    echo "Bringing down existing interface $IFACE..."
-    sudo ip link set "$IFACE" down
-    # Do NOT delete wlan0 or main interface, just bring it down
+echo "Using network interface: $INTERFACE"
+
+# Check if interface is wireless
+if iw dev "$INTERFACE" info &>/dev/null; then
+    echo "$INTERFACE is wireless, joining IBSS..."
+
+    echo "Bringing down interface $INTERFACE..."
+    sudo ip link set "$INTERFACE" down
+
+    echo "Joining ad-hoc (IBSS) network on $INTERFACE..."
+    sudo iw dev "$INTERFACE" ibss join TestAdhoc 2412
+
+    echo "Bringing interface $INTERFACE up..."
+    sudo ip link set "$INTERFACE" up
+
+else
+    echo "$INTERFACE is wired (Ethernet) or non-wireless, skipping IBSS join."
 fi
 
-# Remove old ah0 if it exists (ignore errors)
-sudo iw dev ah0 del 2>/dev/null || true
-
-echo "Adding ah0 to $PHY..."
-sudo iw phy "$PHY" interface add ah0 type ibss
-sudo ip link set ah0 up
-
-echo "Joining ad-hoc network..."
-sudo iw dev ah0 ibss join TestAdhoc 2412
-
-echo "Adding ah0 to batman-adv and bringing up bat0..."
-sudo batctl if add ah0
+echo "Adding $INTERFACE to batman-adv and bringing up bat0..."
+sudo batctl if add "$INTERFACE"
 sudo ip link set up dev bat0
 
 echo "Mesh setup complete."
