@@ -31,6 +31,8 @@ fi
 
 echo "Stopping network services..."
 sudo systemctl stop NetworkManager
+sudo systemctl stop wpa_supplicant
+
 
 echo "Creating ad-hoc interface..."
 sudo iw dev ah0 del 2>/dev/null
