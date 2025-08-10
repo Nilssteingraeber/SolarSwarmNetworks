@@ -35,14 +35,14 @@ sudo systemctl stop wpa_supplicant
 
 echo "Creating ad-hoc interface..."
 # Detect first available PHY
-PHY=$(iw dev | grep -oP '^phy\d+' | head -n1)
+PHY=$(sudo iw dev | grep -oP '^phy\d+' | head -n1)
 if [ -z "$PHY" ]; then
     echo "No Wi-Fi PHY found. Exiting."
     exit 1
 fi
 
 # Find any interface currently bound to that PHY
-IFACE=$(iw dev | awk -v phy="$PHY" '$1=="Interface"{print $2}' | head -n1)
+IFACE=$(sudo iw dev | awk -v phy="$PHY" '$1=="Interface"{print $2}' | head -n1)
 if [ -n "$IFACE" ]; then
     echo "Removing existing interface $IFACE from $PHY..."
     sudo ip link set "$IFACE" down
