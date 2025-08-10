@@ -32,36 +32,41 @@ sudo systemctl stop NetworkManager
 sudo systemctl stop wpa_supplicant
 sudo rfkill unblock wifi
 
-# Find first non-loopback, non-batman interface
-# Exclude lo, bat0, bat1, mesh0, ah0, etc.
-INTERFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -Ev '^(lo|bat[0-9]*|mesh0|ah0)$' | head -n1)
+# Delete existing mesh0 if it exists
+if ip link show mesh0 &>/dev/null; then
+    echo "Deleting existing mesh0 interface..."
+    sudo ip link set mesh0 down
+    sudo ip link delete mesh0
+fi
 
-if [ -z "$INTERFACE" ]; then
-    echo "No suitable network interface found. Exiting."
+# Detect first physical interface (excluding lo, bat0, etc)
+PHYS_IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -Ev '^(lo|bat[0-9]*|mesh0|ah0)$' | head -n1)
+
+if [ -z "$PHYS_IFACE" ]; then
+    echo "No suitable physical interface found. Exiting."
     exit 1
 fi
 
-echo "Using network interface: $INTERFACE"
+echo "Detected physical interface: $PHYS_IFACE"
 
-# Check if interface is wireless
-if iw dev "$INTERFACE" info &>/dev/null; then
-    echo "$INTERFACE is wireless, joining IBSS..."
+# Bring down physical interface before renaming
+sudo ip link set "$PHYS_IFACE" down
 
-    echo "Bringing down interface $INTERFACE..."
-    sudo ip link set "$INTERFACE" down
+echo "Renaming $PHYS_IFACE to mesh0..."
+sudo ip link set "$PHYS_IFACE" name mesh0
 
-    echo "Joining ad-hoc (IBSS) network on $INTERFACE..."
-    sudo iw dev "$INTERFACE" ibss join TestAdhoc 2412
+# Bring up mesh0 interface
+sudo ip link set mesh0 up
 
-    echo "Bringing interface $INTERFACE up..."
-    sudo ip link set "$INTERFACE" up
-
-else
-    echo "$INTERFACE is wired (Ethernet) or non-wireless, skipping IBSS join."
+# If wireless, join IBSS on mesh0
+if iw dev mesh0 info &>/dev/null; then
+    echo "Joining ad-hoc (IBSS) network on mesh0..."
+    sudo iw dev mesh0 ibss join TestAdhoc 2412
 fi
 
-echo "Adding $INTERFACE to batman-adv and bringing up bat0..."
-sudo batctl if add "$INTERFACE"
+# Add mesh0 to batman-adv and bring up bat0
+echo "Adding mesh0 to batman-adv and bringing up bat0..."
+sudo batctl if add mesh0
 sudo ip link set up dev bat0
 
 echo "Mesh setup complete."
