@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Helper: install a package if missing
 install_if_missing() {
     if ! command -v "$1" &>/dev/null; then
         echo "Installing $1..."
@@ -15,6 +16,7 @@ install_if_missing iw iw
 install_if_missing ip iproute2
 install_if_missing batctl batctl
 
+# Load batman-adv
 if ! lsmod | grep -q batman_adv; then
     echo "Loading batman-adv kernel module..."
     sudo modprobe batman-adv || {
@@ -32,40 +34,41 @@ sudo systemctl stop NetworkManager
 sudo systemctl stop wpa_supplicant
 sudo rfkill unblock wifi
 
-# Delete existing mesh0 if it exists
+# Delete old mesh0 if exists
 if ip link show mesh0 &>/dev/null; then
-    echo "Deleting existing mesh0 interface..."
+    echo "Deleting existing mesh0..."
     sudo ip link set mesh0 down
     sudo ip link delete mesh0
 fi
 
-# Detect first physical interface (excluding lo, bat0, etc)
-PHYS_IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -Ev '^(lo|bat[0-9]*|mesh0|ah0)$' | head -n1)
-
-if [ -z "$PHYS_IFACE" ]; then
-    echo "No suitable physical interface found. Exiting."
+# Detect the first wireless interface (physical)
+WIFI_IF=$(iw dev | awk '$1=="Interface"{print $2}' | head -n1)
+if [ -z "$WIFI_IF" ]; then
+    echo "No wireless interface found. Exiting."
     exit 1
 fi
+echo "Detected wireless interface: $WIFI_IF"
 
-echo "Detected physical interface: $PHYS_IFACE"
+# Get its PHY
+PHY=$(iw dev | awk -v iface="$WIFI_IF" '$1=="Interface" && $2==iface {getline; if($1=="phy") print $2}')
+if [ -z "$PHY" ]; then
+    PHY=$(iw dev | grep -B1 "Interface $WIFI_IF" | grep "^phy" | sed 's/phy//')
+fi
+echo "Using PHY phy$PHY"
 
-# Bring down physical interface before renaming
-sudo ip link set "$PHYS_IFACE" down
+# Remove existing interface bound to this PHY
+sudo ip link set "$WIFI_IF" down
+sudo iw dev "$WIFI_IF" del
 
-echo "Renaming $PHYS_IFACE to mesh0..."
-sudo ip link set "$PHYS_IFACE" name mesh0
-
-# Bring up mesh0 interface
+# Create mesh0 in IBSS mode
+echo "Creating mesh0 on phy$PHY..."
+sudo iw phy "phy$PHY" interface add mesh0 type ibss
 sudo ip link set mesh0 up
 
-# If wireless, join IBSS on mesh0
-if iw dev mesh0 info &>/dev/null; then
-    echo "Joining ad-hoc (IBSS) network on mesh0..."
-    sudo iw dev mesh0 ibss join TestAdhoc 2412
-fi
+echo "Joining IBSS network..."
+sudo iw dev mesh0 ibss join TestAdhoc 2412
 
-# Add mesh0 to batman-adv and bring up bat0
-echo "Adding mesh0 to batman-adv and bringing up bat0..."
+echo "Adding mesh0 to batman-adv..."
 sudo batctl if add mesh0
 sudo ip link set up dev bat0
 
