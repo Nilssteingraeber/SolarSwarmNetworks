@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# --- Helper to install dependencies ---
+# Helper function to check & install dependencies
 install_if_missing() {
     if ! command -v "$1" &>/dev/null; then
         echo "Installing $1..."
@@ -17,7 +17,7 @@ install_if_missing iw iw
 install_if_missing ip iproute2
 install_if_missing batctl batctl
 
-# --- Load batman-adv kernel module ---
+# Check if batman-adv module is loaded
 if ! lsmod | grep -q batman_adv; then
     echo "Loading batman-adv kernel module..."
     sudo modprobe batman-adv || {
@@ -30,12 +30,12 @@ else
     echo "batman-adv kernel module already loaded."
 fi
 
-# --- Stop interfering services ---
 echo "Stopping network services..."
 sudo systemctl stop NetworkManager || true
 sudo systemctl stop wpa_supplicant || true
+sudo systemctl stop dhcpcd || true
 
-# --- Detect first wireless interface ---
+# Detect wireless interface
 WIFI_IF=$(iw dev | awk '$1=="Interface"{print $2; exit}')
 if [ -z "$WIFI_IF" ]; then
     echo "No wireless interface found. Exiting."
@@ -43,37 +43,35 @@ if [ -z "$WIFI_IF" ]; then
 fi
 echo "Detected wireless interface: $WIFI_IF"
 
-# --- Get PHY name and clean it ---
-PHY=$(iw dev | grep -B1 "Interface $WIFI_IF" | grep "^phy" | sed 's/#//')
+# Detect PHY
+PHY=$(iw dev | grep -B1 "$WIFI_IF" | head -n1 | awk '{print $1}')
 if [ -z "$PHY" ]; then
-    echo "Could not determine PHY for $WIFI_IF. Exiting."
+    echo "Could not detect PHY for $WIFI_IF. Exiting."
     exit 1
 fi
 echo "Using PHY $PHY"
 
-# --- Remove old mesh0 if it exists ---
-if ip link show mesh0 &>/dev/null; then
-    echo "Removing existing mesh0..."
-    sudo ip link set mesh0 down || true
-    sudo iw dev mesh0 del || true
+# Remove old mesh0 if exists
+sudo iw dev mesh0 del 2>/dev/null || true
+
+echo "Creating mesh0 on $PHY..."
+if sudo iw phy "$PHY" interface add mesh0 type ibss 2>/tmp/iw_error.log; then
+    echo "mesh0 created successfully."
+else
+    ERRMSG=$(cat /tmp/iw_error.log)
+    echo "Failed to create mesh0: $ERRMSG"
+    echo "Falling back to renaming $WIFI_IF to mesh0..."
+    sudo ip link set "$WIFI_IF" down
+    sudo ip link set "$WIFI_IF" name mesh0
 fi
 
-# --- Remove the original interface before creating mesh0 ---
-echo "Removing existing interface $WIFI_IF..."
-sudo ip link set "$WIFI_IF" down || true
-sudo iw dev "$WIFI_IF" del || true
-
-# --- Create mesh0 in IBSS mode ---
-echo "Creating mesh0 on $PHY..."
-sudo iw phy "$PHY" interface add mesh0 type ibss
+# Bring mesh0 up
 sudo ip link set mesh0 up
 
-# --- Join the IBSS network ---
 echo "Joining IBSS network..."
 sudo iw dev mesh0 ibss join TestAdhoc 2412
 
-# --- Add mesh0 to batman-adv ---
-echo "Adding mesh0 to batman-adv..."
+echo "Adding mesh0 to batman-adv and bringing up bat0..."
 sudo batctl if add mesh0
 sudo ip link set up dev bat0
 
