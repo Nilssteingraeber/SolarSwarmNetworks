@@ -49,21 +49,22 @@ if [ -z "$WIFI_IF" ]; then
 fi
 echo "Detected wireless interface: $WIFI_IF"
 
-# Get its PHY
-PHY=$(iw dev | awk -v iface="$WIFI_IF" '$1=="Interface" && $2==iface {getline; if($1=="phy") print $2}')
+# Get its PHY (clean name like phy0)
+PHY=$(iw dev | grep -B1 "Interface $WIFI_IF" | grep "^phy" | awk '{print $1}')
 if [ -z "$PHY" ]; then
-    PHY=$(iw dev | grep -B1 "Interface $WIFI_IF" | grep "^phy" | sed 's/phy//')
+    echo "Could not detect PHY for $WIFI_IF. Exiting."
+    exit 1
 fi
-echo "Using PHY phy$PHY"
+echo "Using PHY $PHY"
 
 # Remove existing interface bound to this PHY
 sudo ip link set "$WIFI_IF" down
 sudo iw dev "$WIFI_IF" del
 
 # Create mesh0 in IBSS mode
-echo "Creating mesh0 on phy$PHY..."
-sudo iw phy "phy$PHY" interface add mesh0 type ibss
-sudo ip link set mesh0 up
+echo "Creating mesh0 on $PHY..."
+sudo iw phy "$PHY" interface add mesh0 type ibss
+
 
 echo "Joining IBSS network..."
 sudo iw dev mesh0 ibss join TestAdhoc 2412
