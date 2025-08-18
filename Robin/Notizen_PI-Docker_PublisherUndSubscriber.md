@@ -97,5 +97,39 @@ source /ros2_ws/install/setup.bash
 ```bash
 ros2 run examples_rclcpp_minimal_subscriber subscriber_member_function
 ```
+## Problem
+PI hat als Subscriber nichts empfangen. Lösung?
+## Troubleshooting, funktioniert!
+Eine XML Datei erstellen:
+```bash
+<?xml version="1.0" encoding="UTF-8" ?>
+<profiles>
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>udp_transport</transport_id>
+      <type>UDPv4</type>
+      <interfaceWhiteList>
+        <address>10.42.0.3</address> <!-- bat0 IP vom Pi -->
+      </interfaceWhiteList>
+    </transport_descriptor>
+  </transport_descriptors>
+</profiles>
+```
+Und dann mit
 
+```bash
+docker run -it --rm --net=host \
+  -v /home/pi/Documents/Softwarepraktikum/fastdds.xml:/root/fastdds.xml \
+  robincoding97/ros2-jazzy-subscriber:arm64 /bin/bash
+```
+starten.
+
+Im Container selber:
+```bash
+export FASTRTPS_DEFAULT_PROFILES_FILE=/root/fastdds.xml
+
+source /opt/ros/jazzy/setup.bash
+source /ros2_ws/install/setup.bash
+ros2 run examples_rclcpp_minimal_subscriber subscriber_member_function
+```
 
