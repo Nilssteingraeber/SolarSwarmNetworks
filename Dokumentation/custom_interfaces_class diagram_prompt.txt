@@ -1,0 +1,72 @@
+@startuml
+package "custom_interfaces.msg" {
+  class RobotBattery {
+    nid : str
+    data : float
+  }
+
+  class RobotCpu {
+    nid : str
+    data : float
+  }
+
+  class RobotActivity {
+    nid : str
+    activity : str
+  }
+
+  class RobotPoint {
+    nid : str
+    x : float
+    y : float
+    z : float
+  }
+
+  class RobotQuaternion {
+    nid : str
+    x : float
+    y : float
+    z : float
+    w : float
+  }
+
+  class RobotMisc {
+    nid : str
+    data : str
+  }
+}
+
+package "custom_interfaces.srv" {
+  class SetRobotActivity_Request {
+    activity : str
+    details : str
+  }
+
+  class SetRobotActivity_Response {
+    msg : str
+  }
+
+  class RobotServiceInfo_Request {
+    service : str
+  }
+
+  class RobotServiceInfo_Response {
+    msg : str
+    services : list
+  }
+
+  class RobotInterfaceInfo_Request {
+    interface : str
+  }
+
+  class RobotInterfaceInfo_Response {
+    definition : str
+    interfaces : list
+  }
+}
+
+SetRobotActivity_Request --- SetRobotActivity_Response
+RobotServiceInfo_Request --- RobotServiceInfo_Response
+RobotInterfaceInfo_Request --- RobotInterfaceInfo_Response
+
+@enduml

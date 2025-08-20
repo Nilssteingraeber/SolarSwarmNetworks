@@ -1,0 +1,5 @@
+services:
+  mock_robot:
+    build:
+      - context: .
+      - dockerfile: Dockerfile

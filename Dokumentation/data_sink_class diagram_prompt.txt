@@ -1,0 +1,37 @@
+@startuml
+package "rclpy.node" {
+  class Node
+}
+
+package "sw_util" {
+  class BaseStatusSub {
+    __please_override : str
+    __subscriptions : dict
+    __batch_timer : rclpy.timer.Timer
+    __nodes : dict
+    __conn : None
+    
+    @property subscriptions()
+    @property nodes()
+    @property conn()
+    
+    connect_db() : bool
+    subscription_callback(msg)
+    forward_batch()
+    batch_timer_callback()
+    check_nid(nid : int) : bool
+  }
+}
+
+note top of BaseStatusSub : "connect_db returns True if conn\n has a working connection"
+
+package "data_sink" {
+  class RobotStatusSub {
+    forward_batch_test()
+    forward_batch()
+  }
+}
+
+Node <|-- BaseStatusSub
+BaseStatusSub <|-- RobotStatusSub
+@enduml
