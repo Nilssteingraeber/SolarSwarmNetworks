@@ -1,0 +1,4 @@
+string service ""
+---
+string msg
+string[] services
