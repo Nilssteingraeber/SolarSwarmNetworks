@@ -1,0 +1,55 @@
+services:
+  sw_robot:
+    build:
+      - context: .
+      - dockerfile: sw_robot.Dockerfile
+    networks:
+      - host
+      - internal
+    environment:
+      - DB_COLUMN_NAME_BATTERY: 'battery'
+      - DB_COLUMN_NAME_CPU: 'cpu_1'
+      - DB_COLUMN_NAME_ACTIVITY: 'activity'
+      - DB_COLUMN_NAME_POINT: 'point'
+      - DB_COLUMN_ORIENTATION: 'orientation'
+      - DB_COLUMN_NAME_MISC: 'misc'
+      - DB_COLUMN_NAME_STRENGTH: 'status'
+      - DB_COLUMN_NAME_ROBOT_ID: 'robot_id'
+      - DB_COLUMN_NAME_NID: 'nid'
+      - DB_TABLE_NAME_ROBOT: 'Robot'
+      - DB_TABLE_NAME_NEIGHBOR: 'Neighbor'
+      - DB_TABLE_NAME_STATUS: 'Status'
+      - DB_NAME: rosData
+      - DB_USER: postgres
+      - DB_PASSWORD: securepassword
+      - DB_HOST: internal
+      - DB_PORT: "5432"
+
+  backend:
+    build:
+      - context: .
+      - dockerfile: backend.Dockerfile # missing
+    networks:
+      - internal
+      - host
+
+  db:
+    image: postgres:15
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: securepassword
+      POSTGRES_DB: rosData
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+    driver: bridge

@@ -1,5 +1,5 @@
 # Einleitung
-Dieses Verzeichnis beinhaltet alle notwendigen Dateien für den Start eines Mock-Roboters. Ein Mock-Roboter ist ein WLAN-fähiger Rechner mit Linux (Ubuntu) als Betriebssystem. Wegen der Anforderungen an dieses Projekt werden andere Distributionen oder ältere Versionen als Ubuntu 24.04 nicht getestet. Der Start setzt neben dem Betriebssystem eine Internetverbindung für die Vorbereitung voraus. 
+Dieses Verzeichnis beinhaltet alle notwendigen Dateien für den Start eines Data Sinks. Ein Data Sink ist ein WLAN-fähiger Rechner mit Linux (Ubuntu) als Betriebssystem. Wegen der Anforderungen an dieses Projekt werden andere Distributionen oder ältere Versionen als Ubuntu 24.04 nicht getestet. Der Start setzt neben dem Betriebssystem eine Internetverbindung für die Vorbereitung voraus. 
 
 # Vorbereitung
 ## Docker
@@ -36,16 +36,16 @@ Führe mit der richtigen bezeichnung das `baatman_adv_setup.bash` Skript aus:
 ```
 
 ## Dockerfile
-Die Dockerfile legt `/home/ubuntu/solarswarm` als Arbeitsverzeichnis fest und kopiert benötigte Dateien dort hinein. `mock_robot_install.zip` wurde komprimiert, da es das Verzeichnis sonst das Dateinlimit für einen Upload auf Github überschreiten würde. Das Docker Image `ros:jazzy` hat das zum entpacken von ZIP-Dateien häufig verwendete Tool `unzip` nicht vorinstalliert, weshalb das Verzeichnis über `unzip.py` mit vorinstallierten Python-Modulen entpackt wird.
+Die Dockerfile legt `/home/ubuntu/solarswarm` als Arbeitsverzeichnis fest und kopiert benötigte Dateien dort hinein. `sw_robot_install.zip` wurde komprimiert, da es das Verzeichnis sonst das Dateinlimit für einen Upload auf Github überschreiten würde. Das Docker Image `ros:jazzy` hat das zum entpacken von ZIP-Dateien häufig verwendete Tool `unzip` nicht vorinstalliert, weshalb das Verzeichnis über `unzip.py` mit vorinstallierten Python-Modulen entpackt wird.
 
 | Datei | Funktion |
 |-------|----------|
-| mock_robot_install.zip | Komprimiertes Verzeichnis mit den bereits gebauten Packages `mock_robot` und `custom_interfaces`. |
-| unzip.py | Winziges Python-Skript, welches die in `mock_data_init` übergebene Datei entpackt. |
-| mock_data_init | Skript, welches als Entrypoint der Dockerfile ausgeführt wird. Es führt `unzip.py` aus, lädt das Overlay und startet die `mock_data` Node. |
+| sw_robot_install.zip | Komprimiertes Verzeichnis mit den bereits gebauten Packages `sw_robot` und `custom_interfaces`. |
+| unzip.py | Winziges Python-Skript, welches die in `sw_robot_init` übergebene Datei entpackt. |
+| sw_robot_init | Skript, welches als Entrypoint der Dockerfile ausgeführt wird. Es führt `unzip.py` aus, lädt das Overlay und startet die `data_sink` Node. |
 
 ## Docker Compose
-Von diesem Verzeichnis aus startet `sudo docker compose up --build` den Container mit dem Mock-Roboter. Die ROS2 Node `mock_data` beginnt nun, Nachrichten zu veröffentlichen.
+Von diesem Verzeichnis aus startet `sudo docker compose up --build` den Container mit dem Data Sink, sowie den Container mit der Datenbank. Die ROS2 Node `data_sink` beginnt nun, Nachrichten zu empfangen und regelmäßig den Status der Roboter in der Datenbank zu speichern.
 
 Nach dem Start lässt sich der Container manuell inspizieren:
 ```bash
