@@ -148,28 +148,29 @@ Der Data Sink ist eine ROS2 Node `data_sink`. Implementiert wird diese als Klass
 *RobotStatusPub* implementiert einen Timer (Intervall durch Parameter übergeben) mit entsprechender Timer-Callback-Funktion. Diese schreibt batchweise alle Zustände der bekannten Roboter in eine Datenbank (`forward_batch`) oder gibt sie aus (`forward_batch_test`). `__batch_timer` (`batch_intervall` default 10.0) ruft `batch_timer_callback` auf, welcher `forward_batch` aufruft und einen Zeitstempel ausgibt. `subscription_callback` wird von allen Subscriptions in `subscriptions` aufgerufen und nimmt eine Fallunterscheidung für die Klasse der Nachricht vor. `nodes` beinhaltet die `nid` einer Node als Schlüssel und ein `dict` mit Daten als Wert. Die Schlüssel dieses Dictionaries sind `'battery'`, `'cpu'`, etc.. `check_nid` prüft, ob die `nid` einer Nachricht in `nodes` vorhanden ist. Falls nicht, wird ein Eintrag mit leerem Daten-`dict` erstellt.
 *BaseStatusPub* definiert `forward_batch` und die Callback-Funktionen, jedoch müssen jedoch überschrieben werden. `connect_db` versucht bei fehlender oder geschlossener Verbindung zu einer Datenbank, eine neue Verbindung aufzubauen. Dazu werden die Umgebungsvariablen `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST` und `DB_PORT`. Die Methode gibt `True` zurück, falls zuletzt eine gültige Verbindung besteht. *RobotStatusSub* versucht in `forward_batch` bis zu fünf-mal, eine Verbindung aufzubauen mit je einer Sekunde Pause zwischen Versuchen. Die Umgebungsvariablen `DB_TABLE_NAME` und `DB_COLUMN_NAMES_*` können an die zugehörige Datenbank angepasst werden.
 
+Beispielhafte Ausgabe einer Node durch `forward_batch_test`:
+
+![forward_batch_test Ausgabe](forward_batch_test_output.png)
+
 
 ## Datenfluss
 Im folgenden Abschnitt soll auf den Zusammenhang der Netzwerkkomponenten eingegangen werden. Zunächst sei diese Abbildung zu betrachten:
 
-![Publisher-Subscriber bei zwei Robotern](obsolete/sw_message_flow.svg)
+![Publisher-Subscriber bei zwei Robotern](sw_message_flow.svg)
 
-Grundlegend für den Verkehr von ROS2 Nachrichten ist die ROS Middleware (RMW). Sie basiere laut ROS2 Dokumentation auf dem Industriestandard DDS/RTPS (Data Distribution Service/Real-Time Publish-Subscribe Protocol), welcher für die Entdeckung von Knoten und die Serialisierung, sowie den Transport von Daten zuständig sei. Wir verwenden per Standardkonfiguration von ROS2 Jazzy eProsimas Fast DDS aufgrund der Apache 2 Lizenz.
+Grundlegend für den Verkehr von ROS2 Nachrichten ist die ROS Middleware (RMW). Sie basiert laut ROS2 Dokumentation auf dem Industriestandard DDS/RTPS (Data Distribution Service/Real-Time Publish-Subscribe Protocol), welcher für die Entdeckung von Knoten und die Serialisierung, sowie den Transport von Daten zuständig ist. Wir verwenden per Standardkonfiguration von ROS2 Jazzy eProsimas Fast DDS aufgrund der Apache 2 Lizenz.
 
 Referenz: https://docs.ros.org/en/jazzy/Concepts/Intermediate/About-Different-Middleware-Vendors.html
 
 Entdeckung (eng. discovery) ist dafür verantwortlich, dass sich Publisher, Subscriber, Service Clients, Service Server und sonstige Teilnehmer im ROS Graphen erkennen. Sie geht über das eigene Betriebssystem oder in unserem Fall den eigenen Container hinaus und erkennt alle erreichbaren Teilnehmer im Netzwerk mit der selben `ROS_DOMAIN_ID`.
 
-**--- to-do: Roboter-zu-Roboter über batman-adv testen ---
-was wenn in mehreren Docker Netzwerken gleichzeitig?**
+In der angeführten Abbildung dargestellt sind zwei Roboter, die sich im selben Netzwerk befinden. Die gestrichelten Pfeile deuten auf den Fluss einer Nachricht einer Publisher Node in Container A1 (Roboter A, Container 1). Jeder Fluss wird hier als eigener Fall betrachtet. In jedem Fall wird davon ausgegangen, dass die Discovery der RMW gelingt. Alle Container basieren auf dem Image ros:jazzy und haben somit ROS2 Jazzy installiert.
 
-In der Abbildung dargestellt sind zwei Roboter, die sich im selben Netzwerk befinden. Die gestrichelten Pfeile deuten auf den Fluss einer Nachricht der Publisher Node in Container 1 von Roboter 1. Jeder Fluss soll als eigener Fall betrachtet werden. In jedem Fall wird davon ausgegangen, dass die Discovery der RMW gelingt. Alle Container basieren auf dem Image ros:jazzy und haben somit ROS2 Jazzy installiert.
+Im ersten Fall befindet sich der Subscriber in Container A1. Da sich beide ROS2 Nodes im selben Container befinden, wird kein Netzwerk benötigt. Die Nachricht kommt unmittelbar über die RMW an.  
+Im zweiten Fall befindet sich der Subscriber in Container A2. Die Container 1 und 2 von Roboter A müssen über ein Netzwerk verbunden werden. Docker verbindet Container standardmäßig über ein Bridge-Netzwerk, welches üblicherweise für Container auf dem selben Host verwendet wird.  
+Im dritten Fall befinden sich Subscriber und Publisher auf verschiedenen Robotern. Um die jeweiligen Container A1 und B1 zu verbinden, wird ein Overlay-Netzwerk benötigt, was die Teilnahme beider Docker daemons in einem Docker-Schwarm voraussetzt. Die Übertragung der Nachricht findet dann über WLAN statt.
 
-Im ersten Fall befindet sich der Subscriber in Container 1 von Roboter 1. Da sich beide ROS2 Nodes im selben Container befinden, wird kein Netzwerk benötigt. Die Nachricht kommt unmittelbar über die RMW an.  
-Im zweiten Fall befindet sich der Subscriber in Container 2 von Roboter 1. Die 1 und 2 von Roboter 1 müssen über ein Netzwerk verbunden werden. Docker verbindet Container standardmäßig über ein Bridge-Netzwerk, welches üblich für Container auf dem selben Host sind.  
-Im dritten Fall befinden sich Subscriber und Publisher auf verschiedenen Robotern. Um die jeweiligen Container zu verbinden, wird ein Overlay-Netzwerk benötigt, was die Teilnahme beider Docker daemons in einem Docker-Schwarm voraussetzt. Die Übertragung der Nachricht findet dann über WLAN statt.
-
-**--- to-do: Testen, ob ob `--network host` benötigt wird**
+Laut offizieller Docker Dokumentation sind Container von den Netzwerken des Hosts isoliert. Für batman-adv ist es daher möglich, dass `host` anstatt `overlay` als Netzwerktreiber für Docker Netzwerke benötigt werden.
 
 Referenz: https://docs.docker.com/engine/network/
 

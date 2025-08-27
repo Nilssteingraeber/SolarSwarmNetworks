@@ -6,12 +6,12 @@ package "rclpy.node" {
 package "sw_util" {
   class BaseStatusSub {
     __please_override : str
-    __subscriptions : dict
+    __subscription_dict: dict
     __batch_timer : rclpy.timer.Timer
     __nodes : dict
     __conn : None
     
-    @property subscriptions()
+    @property subscription_dict()
     @property nodes()
     @property conn()
     

@@ -9,20 +9,20 @@ package "robot_util" {
   __nid : int
   __mac : int
   __please_override : str
-  __publishers : dict
-  __services : dict
-  __actions : dict
+  __publisher_dict : dict
+  __service_dict : dict
+  __action_dict : dict
   __allowed_activities : set
   __activity : str
-  __timers : dict
+  __timer_dict : dict
   
   @property nid()
   @property mac()
-  @property publishers()
-  @property services()
-  @property actions()
+  @property publisher_dict()
+  @property service_dict()
+  @property action_dict()
   @property allowed_activities()
-  @property timers()
+  @property timer_dict()
   @property activity()
   @activity.setter activity(a : str)
 
