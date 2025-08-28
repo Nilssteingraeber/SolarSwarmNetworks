@@ -1,0 +1,26 @@
+[1.036s] Invoking command in '/home/robinbrack/Documents/ROS/Solar/ros2_ws/src/py_pubsub': PYTHONPATH=/home/robinbrack/Documents/ROS/Solar/ros2_ws/build/py_pubsub/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/robinbrack/Documents/ROS/Solar/ros2_ws/install/py_pubsub/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/py_pubsub build --build-base /home/robinbrack/Documents/ROS/Solar/ros2_ws/build/py_pubsub/build install --record /home/robinbrack/Documents/ROS/Solar/ros2_ws/build/py_pubsub/install.log --single-version-externally-managed install_data
+[1.348s] running egg_info
+[1.370s] writing ../../build/py_pubsub/py_pubsub.egg-info/PKG-INFO
+[1.371s] writing dependency_links to ../../build/py_pubsub/py_pubsub.egg-info/dependency_links.txt
+[1.371s] writing entry points to ../../build/py_pubsub/py_pubsub.egg-info/entry_points.txt
+[1.371s] writing requirements to ../../build/py_pubsub/py_pubsub.egg-info/requires.txt
+[1.371s] writing top-level names to ../../build/py_pubsub/py_pubsub.egg-info/top_level.txt
+[1.420s] reading manifest file '../../build/py_pubsub/py_pubsub.egg-info/SOURCES.txt'
+[1.420s] adding license file 'LICENSE'
+[1.421s] writing manifest file '../../build/py_pubsub/py_pubsub.egg-info/SOURCES.txt'
+[1.422s] running build
+[1.422s] running build_py
+[1.422s] copying py_pubsub/subscriber_member_function.py -> /home/robinbrack/Documents/ROS/Solar/ros2_ws/build/py_pubsub/build/lib/py_pubsub
+[1.423s] running install
+[1.430s] running install_lib
+[1.453s] copying /home/robinbrack/Documents/ROS/Solar/ros2_ws/build/py_pubsub/build/lib/py_pubsub/subscriber_member_function.py -> /home/robinbrack/Documents/ROS/Solar/ros2_ws/install/py_pubsub/lib/python3.12/site-packages/py_pubsub
+[1.454s] byte-compiling /home/robinbrack/Documents/ROS/Solar/ros2_ws/install/py_pubsub/lib/python3.12/site-packages/py_pubsub/subscriber_member_function.py to subscriber_member_function.cpython-312.pyc
+[1.454s] running install_data
+[1.454s] running install_egg_info
+[1.479s] removing '/home/robinbrack/Documents/ROS/Solar/ros2_ws/install/py_pubsub/lib/python3.12/site-packages/py_pubsub-0.0.0-py3.12.egg-info' (and everything under it)
+[1.479s] Copying ../../build/py_pubsub/py_pubsub.egg-info to /home/robinbrack/Documents/ROS/Solar/ros2_ws/install/py_pubsub/lib/python3.12/site-packages/py_pubsub-0.0.0-py3.12.egg-info
+[1.480s] running install_scripts
+[1.641s] Installing turtle_publisher script to /home/robinbrack/Documents/ROS/Solar/ros2_ws/install/py_pubsub/lib/py_pubsub
+[1.641s] Installing turtle_subscriber script to /home/robinbrack/Documents/ROS/Solar/ros2_ws/install/py_pubsub/lib/py_pubsub
+[1.641s] writing list of installed files to '/home/robinbrack/Documents/ROS/Solar/ros2_ws/build/py_pubsub/install.log'
+[1.670s] Invoked command in '/home/robinbrack/Documents/ROS/Solar/ros2_ws/src/py_pubsub' returned '0': PYTHONPATH=/home/robinbrack/Documents/ROS/Solar/ros2_ws/build/py_pubsub/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/robinbrack/Documents/ROS/Solar/ros2_ws/install/py_pubsub/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/py_pubsub build --build-base /home/robinbrack/Documents/ROS/Solar/ros2_ws/build/py_pubsub/build install --record /home/robinbrack/Documents/ROS/Solar/ros2_ws/build/py_pubsub/install.log --single-version-externally-managed install_data

@@ -1,0 +1,3 @@
+[console_scripts]
+turtle_publisher = py_pubsub.publisher_member_function:main
+turtle_subscriber = py_pubsub.subscriber_member_function:main
