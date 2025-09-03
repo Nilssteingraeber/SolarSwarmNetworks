@@ -7,18 +7,28 @@ services:
       - host
       - internal
     environment:
-      - DB_COLUMN_NAME_BATTERY: 'battery'
-      - DB_COLUMN_NAME_CPU: 'cpu_1'
-      - DB_COLUMN_NAME_ACTIVITY: 'activity'
-      - DB_COLUMN_NAME_POINT: 'point'
-      - DB_COLUMN_ORIENTATION: 'orientation'
-      - DB_COLUMN_NAME_MISC: 'misc'
-      - DB_COLUMN_NAME_STRENGTH: 'status'
+      # ROBOT
+      - DB_TABLE_NAME_ROBOT: 'Robot'
       - DB_COLUMN_NAME_ROBOT_ID: 'robot_id'
       - DB_COLUMN_NAME_NID: 'nid'
-      - DB_TABLE_NAME_ROBOT: 'Robot'
-      - DB_TABLE_NAME_NEIGHBOR: 'Neighbor'
+      - DB_COLUMN_NAME_IPV4: 'ipv4'
+      - DB_COLUMN_NAME_IPV6: 'ipv4'
+      - DB_COLUMN_NAME_MAC: 'mac'
+      # STATUS
       - DB_TABLE_NAME_STATUS: 'Status'
+      - DB_COLUMN_NAME_BATTERY: 'battery'
+      - DB_COLUMN_NAME_CPU_1: 'cpu_1'
+      - DB_COLUMN_NAME_POINT: 'point'
+      - DB_COLUMN_ORIENTATION: 'orientation'
+      # - DB_COLUMN_NAME_MISC: 'misc'
+      # STATE
+      - DB_TABLE_NAME_STATE: 'State'
+      - DB_COLUMN_NAME_STATE_ID: 'state_id'
+      - DB_COLUMN_NAME_STATE: 'state'
+      # NEIGHBOR
+      - DB_TABLE_NAME_NEIGHBOR: 'Neighbor'
+      - DB_COLUMN_NAME_STRENGTH: 'strength'
+      # DB
       - DB_NAME: rosData
       - DB_USER: postgres
       - DB_PASSWORD: securepassword

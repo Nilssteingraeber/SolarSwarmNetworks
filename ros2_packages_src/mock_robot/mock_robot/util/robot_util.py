@@ -9,14 +9,16 @@ from custom_interfaces.msg import RobotActivity
 from custom_interfaces.msg import RobotPoint
 from custom_interfaces.msg import RobotQuaternion
 from custom_interfaces.msg import RobotMisc
+from custom_interfaces.msg import NeighborList
 
 from typing import Set
 import re, uuid, psutil
+from abc import ABC, abstractmethod
 from os import cpu_count
 from socket import gethostbyname, gethostname
 
 
-class BaseStatusPub(Node):
+class BaseStatusPub(ABC, Node):
     def __init__(self, nid, mac):
         super().__init__('mock_robot_status_pub_%s' % (nid,))
         self.__nid = nid
@@ -24,19 +26,17 @@ class BaseStatusPub(Node):
         self.__please_override = 'This method of BaseStatusSub does not do anything. Please overwrite it in a child class.'
 
         self.__publisher_dict = {}
-        # self.__service_dict = {}
+        self.__service_dict = {}
         self.__action_dict = {}
         self.__allowed_activities = set() # use add or union to append allowed activities
         self.__activity = ''
         self.__timer_dict = {}
+        self.__neighbor_dict = {}
 
         # init services
-        # self.services['set_activity'] = 
-        self.create_service(SetRobotActivity, 'set_robot_activity_%s' % (self.__nid,), self.set_activity_callback) 
-        # self.services['service_info'] = 
-        self.create_service(RobotServiceInfo, 'robot_service_info_%s' % (self.__nid,), self.service_info_callback)
-        # self.services['interface_info'] = 
-        self.create_service(RobotInterfaceInfo, 'robot_interface_info_%s' % (self.__nid,), self.interface_info_callback)
+        self.__service_dict['set_activity'] = self.create_service(SetRobotActivity, 'set_robot_activity_%s' % (self.__nid,), self.set_activity_callback) 
+        self.__service_dict['service_info'] = self.create_service(RobotServiceInfo, 'robot_service_info_%s' % (self.__nid,), self.service_info_callback)
+        self.__service_dict['interface_info'] = self.create_service(RobotInterfaceInfo, 'robot_interface_info_%s' % (self.__nid,), self.interface_info_callback)
         
         # init publishers
         self.publisher_dict['battery'] = self.create_publisher(RobotBattery, 'robot_battery', 3) # as percent, i.e. 78.46
@@ -45,6 +45,7 @@ class BaseStatusPub(Node):
         self.publisher_dict['point'] = self.create_publisher(RobotPoint, 'robot_point', 3)
         self.publisher_dict['orientation'] = self.create_publisher(RobotQuaternion, 'robot_orientation', 3)
         self.publisher_dict['misc'] = self.create_publisher(RobotMisc, 'robot_misc', 3)
+        self.publisher_dict['neighbors'] = self.create_publisher(NeighborList, 'neighbors', 3)
         self.get_logger().debug('Publishers initialized')
     
     # read-only properties (dict entries can still be changed)
@@ -57,9 +58,9 @@ class BaseStatusPub(Node):
     @property
     def publisher_dict(self):
         return self.__publisher_dict
-    @property
-    def service_dict(self):
-        return self.__service_dict
+    # @property
+    # def service_dict(self):
+    #     return self.__service_dict
     @property
     def action_dict(self):
         return self.__action_dict
@@ -69,6 +70,9 @@ class BaseStatusPub(Node):
     @property
     def timer_dict(self):
         return self.__timer_dict
+    @property
+    def neighbor_dict(self):
+        return self.__neighbor_dict
     
     # read-write properties
     @property
@@ -80,10 +84,13 @@ class BaseStatusPub(Node):
             self.__activity = a
 
     # service callbacks
+    @abstractmethod
     def set_activity_callback(self, request, response):
         raise Exception(self.__please_override)
+    @abstractmethod
     def service_info_callback(self, request, response):
         raise Exception(self.__please_override)
+    @abstractmethod
     def interface_info_callback(self, request, response):
         raise Exception(self.__please_override)
     
@@ -103,7 +110,7 @@ class Util(object):
     @staticmethod
     def get_nid(mac):
         if type(mac).__name__ == 'str':
-            return mac.replace(':', '')
+            return mac.replace(':', '') # hash(mac)
         else:
             print('Given MAC is not a string')
             return None
@@ -124,3 +131,7 @@ class Util(object):
     @staticmethod
     def get_ip():
         gethostbyname(gethostname())
+
+    @staticmethod
+    def get_neighbors():
+        pass # to-do

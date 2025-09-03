@@ -1,5 +1,6 @@
 import rclpy
 from mock_robot.util.robot_util import BaseStatusPub, Util
+from mock_robot.util.time_util import get_timestamp
 from rcl_interfaces.msg import ParameterDescriptor
 # from example_interfaces.msg import String
 # from example_interfaces.msg import Float64
@@ -14,6 +15,7 @@ from custom_interfaces.msg import RobotActivity
 from custom_interfaces.msg import RobotPoint
 from custom_interfaces.msg import RobotQuaternion
 from custom_interfaces.msg import RobotMisc
+from custom_interfaces.msg import NeighborList
 
 from typing import Set
 from datetime import datetime
@@ -32,7 +34,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
 
         # declare parameters
         self.declare_parameter('system_intervall', 3.0, ParameterDescriptor(description='Time it takes for battery, cpu, and activity to be published again.'))
-        self.declare_parameter('geo_intervall', 1.0, ParameterDescriptor(description='Time it takes for point and orientation to be published again.'))
+        self.declare_parameter('geo_intervall', 3.0, ParameterDescriptor(description='Time it takes for point and orientation to be published again.'))
         self.declare_parameter('misc_intervall', 20.0, ParameterDescriptor(description='Time it takes for a json string to be published again.'))
         self.get_logger().debug('Parameters declared')
         
@@ -130,20 +132,23 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
     def system_timer_callback(self):
         # battery
         msg = RobotBattery()
-        msg.nid = self.nid
+        msg.header.nid = self.nid
         msg.data = Util.get_battery()
+        msg.header.time.sec = get_timestamp()
         self.publisher_dict['battery'].publish(msg)
         
         # cpu
         msg = RobotCpu()
-        msg.nid = self.nid
+        msg.header.nid = self.nid
         msg.data = Util.get_cpu()
+        msg.header.time.sec = get_timestamp()
         self.publisher_dict['cpu'].publish(msg)
 
         # activity
         msg = RobotActivity()
-        msg.nid = self.nid
+        msg.header.nid = self.nid
         msg.activity = self.activity
+        msg.header.time.sec = get_timestamp()
         self.publisher_dict['activity'].publish(msg)
     
     def geo_timer_callback(self):
@@ -156,36 +161,43 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
                 else: # wait when in 'manual'
                     self.activity = 'idle'
         msg = RobotPoint()
-        msg.nid = self.nid
+        msg.header.nid = self.nid
         msg.x = float(self.current[0]) # arrays contain numpy.float objects, but geometry_messages requires float
         msg.y = float(self.current[1])
         msg.z = 0.0
+        msg.header.time.sec = get_timestamp()
         self.publisher_dict['point'].publish(msg)
         
         # orientation
         msg = RobotQuaternion()
-        msg.nid = self.nid
+        msg.header.nid = self.nid
         msg.x = 0.0
         msg.y = 0.0
         msg.z = 0.0
         msg.w = 1.0
+        msg.header.time.sec = get_timestamp()
         self.publisher_dict['orientation'].publish(msg)
+
+        # neighbors
+        neighbors = []
+        strengths = []
+        msg = NeighborList()
+        self.neighbor_dict = Util.get_neighbors()
+        for neighbor in self.neighbor_dict.keys():
+            neighbors.append(neighbor)
+            strengths.append(self.neighbor_dict[neighbor])
+        msg.header.time.sec = get_timestamp()
+        self.publisher_dict['neighbors'].publish(msg)
     
     def misc_timer_callback(self):
-        data = {}
-        
-        # MAC
-        data["mac"] = self.mac
-        
-        # IP
-        data["ip"] = Util.get_ip()
-        
         # datetime using format 'year-month-day hour:min:sec.ms'
-        data["datetime"] = str(datetime.now())
+        # data["datetime"] = str(datetime.now())
         
         msg = RobotMisc()
-        msg.nid = self.nid
-        msg.data = dumps(data)
+        msg.header.time.sec = get_timestamp()
+        msg.header.nid = self.nid
+        msg.ipv4 = Util.get_ip()
+        msg.mac = Util.get_mac()
         self.publisher_dict['misc'].publish(msg)
 
 

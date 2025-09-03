@@ -13,6 +13,11 @@ find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 set(files
+  # since v0.3.0
+  "msg/Time.msg"
+  "msg/Header.msg"
+  "msg/NeighborList.msg"
+  # since v0.0.0
   "srv/EchoServiceIf.srv"
   # since v0.1.0
   "srv/SetRobotActivity.srv"

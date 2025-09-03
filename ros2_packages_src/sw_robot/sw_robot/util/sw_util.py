@@ -5,9 +5,9 @@ import rclpy
 from rclpy.node import Node
 from rcl_interfaces.msg import ParameterDescriptor
 from time import time
+from abc import ABC, abstractmethod
 
-
-class BaseStatusSub(Node):
+class BaseStatusSub(ABC, Node):
     def __init__(self):
         super().__init__("robot_status_sub")
         self.__please_override = 'This method of BaseStatusSub does not do anything. Please overwrite it in a child class.'
@@ -55,12 +55,13 @@ class BaseStatusSub(Node):
             print("Connection to db failed:", e)
             return False
 
+    @abstractmethod
     def subscription_callback(self, msg):
         raise Exception(self.__please_override)
-
+    @abstractmethod
     def forward_batch(self):
         raise Exception(self.__please_override)
-    
+    @abstractmethod
     def batch_timer_callback(self):
         raise Exception(self.__please_override)
     
@@ -69,8 +70,5 @@ class BaseStatusSub(Node):
         # It creates an empty dict in nodes for unfamiliar nids to prevent exceptions when accessing a field.
         # Always returns True. Can be overridden to return False for illegal nids.
         if not nid in self.nodes.keys():
-            self.nodes[nid] = {'last': time()}
-            # str(datetime) format: 'YEAR-MONTH-DAY HOUR:MINUTE:SECOND.MS'
-            # datetime has int attributes year, month, day, hour, minute, second, and microsecond, which can be directly accessed
-            # example: datetime.year is the integer 2025
+            self.nodes[nid] = {}
         return True
