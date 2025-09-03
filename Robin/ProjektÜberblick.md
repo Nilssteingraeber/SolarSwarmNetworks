@@ -20,4 +20,4 @@
 | **Integration (Merge)**| –                                   | Frontend ↔ Backend, DB ↔ Backend, UI ↔ Services       | Platzhalter                   | Sehr hoch |
 | **Dokumentation**     | Grobes Pflichtenheft & Github        | Überarbeitung & Ergänzung während/ nach Integration    | Platzhalter                   | Mittel    |
 | **Geräte**     | PI & NUC & Linux-Maschine                 | Tests erfolgreich -> NUC und PI hervorragend Verbindung    | Platzhalter                   | Hoch    |
-| **Testing**           | Unit-Tests teilweise vorhanden        | Erweiterte Unit-Tests, Simulation mit Mock-Robotern    | Platzhalter                    | Hoch      |
+| **Testing**           | Mock-Roboter Tests teilweise vorhanden        | Erweiterte Unit-Tests, Simulation mit Mock-Robotern    | Platzhalter                    | Hoch      |
