@@ -3,8 +3,15 @@ package "rclpy.node" {
   class Node
 }
 
+package "time_util" {
+  class TimeUtil {
+    {static} get_timestamp(): int
+    {static} get_datetime_f(): str
+  }
+}
+
 package "robot_util" {
-  class BaseStatusPub {
+  abstract class BaseStatusPub {
   __init__(nid, mac)
   __nid : int
   __mac : int
@@ -15,6 +22,7 @@ package "robot_util" {
   __allowed_activities : set
   __activity : str
   __timer_dict : dict
+  __neighbor_dict : dict
   
   @property nid()
   @property mac()
@@ -23,20 +31,21 @@ package "robot_util" {
   @property action_dict()
   @property allowed_activities()
   @property timer_dict()
+  @property neighbor_dict()
   @property activity()
   @activity.setter activity(a : str)
-
-  set_activity_callback(request, response)
-  service_info_callback(request, response)
-  interface_info_callback(request, response)
+  {abstract} set_activity_callback(request, response)
+  {abstract} service_info_callback(request, response)
+  {abstract} interface_info_callback(request, response)
   }
 
   class Util {
-    {static} get_mac()
-    {static} get_nid(mac : str)
-    {static} get_battery()
-    {static} get_cpu()
-    {static} get_ip()
+    {static} get_mac() : str
+    {static} get_nid(mac : str) : str
+    {static} get_battery() : float
+    {static} get_cpu() : float
+    {static} get_ip() : str
+    {static} get_neighbors() : dict
   }
 }
 
@@ -82,5 +91,6 @@ Node <|-- BaseStatusPub
 BaseStatusPub <|-- MockRobotStatusPub
 Util <-- MockRobotStatusPub
 MockPosition <|-- MockRobotStatusPub
+TimeUtil <-- MockRobotStatusPub
 ndarray <-- MockPosition
 @enduml

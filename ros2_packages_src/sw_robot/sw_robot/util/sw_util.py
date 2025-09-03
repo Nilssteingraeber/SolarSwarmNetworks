@@ -4,7 +4,6 @@ from os import getenv
 import rclpy
 from rclpy.node import Node
 from rcl_interfaces.msg import ParameterDescriptor
-from time import time
 from abc import ABC, abstractmethod
 
 class BaseStatusSub(ABC, Node):

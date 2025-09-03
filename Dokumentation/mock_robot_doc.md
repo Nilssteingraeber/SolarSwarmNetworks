@@ -199,7 +199,6 @@ Laut offizieller Docker Dokumentation sind Container von den Netzwerken des Host
 
 Referenz: https://docs.docker.com/engine/network/
 
-
 | Schicht | Zuordnung am OSI-Referenzmodell |
 |---|---------------------------------------|
 | **7** Anwendungsschicht      | ROS2 Node im Container publiziert oder empfängt Daten |

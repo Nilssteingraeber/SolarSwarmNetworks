@@ -1,5 +1,15 @@
 @startuml
 package "custom_interfaces.msg" {
+  class Header {
+    nid: str
+    frame_id: str
+    time: Time
+  }
+  
+  class Time {
+    sec: int
+  }  
+
   class RobotBattery {
     nid : str
     data : float
@@ -34,6 +44,14 @@ package "custom_interfaces.msg" {
     nid : str
     data : str
   }
+
+  Header --> Time
+  RobotBattery --> Header
+  RobotCpu --> Header
+  RobotActivity --> Header
+  RobotPoint --> Header
+  RobotQuaternion --> Header
+  RobotMisc --> Header
 }
 
 package "custom_interfaces.srv" {

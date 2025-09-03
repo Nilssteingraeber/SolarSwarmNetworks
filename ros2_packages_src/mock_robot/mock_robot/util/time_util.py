@@ -1,9 +1,12 @@
 from datetime import datetime, timezone
 
-def get_timestamp() -> int:
-    # returns utc timestamp as int
-    return int(datetime.now(timezone.utc).timestamp())
+class TimeUtil(object):
+    @classmethod
+    def get_timestamp() -> int:
+        # returns utc timestamp as int
+        return int(datetime.now(timezone.utc).timestamp())
 
-def get_datetime_f() -> str:
-    # returns month, day, and time as such: 'Aug 27, Wed 11:24:54'
-    return datetime.now().strftime('%b %d, %a %H:%M:%S')
+    @classmethod
+    def get_datetime_f() -> str:
+        # returns month, day, and time as such: 'Aug 27, Wed 11:24:54'
+        return datetime.now().strftime('%b %d, %a %H:%M:%S')

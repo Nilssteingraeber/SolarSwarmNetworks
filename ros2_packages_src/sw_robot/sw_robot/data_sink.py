@@ -13,7 +13,7 @@ from custom_interfaces.msg import NeighborList
 
 from json import loads
 from time import sleep
-from sw_robot.util.time_util import get_timestamp, get_datetime_f
+from sw_robot.util.time_util import TimeUtil
 from sw_robot.util.sw_util import BaseStatusSub
 from psycopg2 import Error
 from os import getenv
@@ -123,7 +123,7 @@ class RobotStatusSub(BaseStatusSub):
         while tries != 0:
             if self.connect_db():
                 try:
-                    t = get_timestamp()
+                    t = TimeUtil.get_timestamp()
                     with self.conn.cursor() as cursor:
                         self.register_new_nodes(cursor)
                         for nid in self.nodes.keys():
@@ -184,7 +184,7 @@ class RobotStatusSub(BaseStatusSub):
     def batch_timer_callback(self):
         self.forward_batch_test()
         # self.forward_batch()
-        print('Batch forwarded: %s' % (get_datetime_f(),))
+        print('Batch forwarded: %s' % (TimeUtil.get_datetime_f(),))
     
     def check_nid(self, nid) -> bool: # override
         if not nid in self.nodes.keys():

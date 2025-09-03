@@ -99,7 +99,7 @@ class BaseStatusPub(ABC, Node):
 # module functions
 class Util(object):
     @staticmethod
-    def get_mac():
+    def get_mac() -> str:
         try:
             mac = ':'.join(re.findall('..', '%012x' % uuid.getnode()))
             return mac
@@ -108,7 +108,7 @@ class Util(object):
             return None
 
     @staticmethod
-    def get_nid(mac):
+    def get_nid(mac) -> str:
         if type(mac).__name__ == 'str':
             return mac.replace(':', '') # hash(mac)
         else:
@@ -116,7 +116,7 @@ class Util(object):
             return None
 
     @staticmethod
-    def get_battery():
+    def get_battery() -> float:
         battery = psutil.sensors_battery()
         if battery != None: # sensors_battery() returns None-object if battery can not be found
             return battery.percent
@@ -124,14 +124,14 @@ class Util(object):
             return -1.0
 
     @staticmethod
-    def get_cpu():
+    def get_cpu() -> float:
         load1, load5, load15 = psutil.getloadavg() # returns 3 values
         return (load1 / cpu_count()) * 100 # average of last minute
 
     @staticmethod
-    def get_ip():
+    def get_ip() -> str:
         gethostbyname(gethostname())
 
     @staticmethod
-    def get_neighbors():
+    def get_neighbors() -> dict:
         pass # to-do

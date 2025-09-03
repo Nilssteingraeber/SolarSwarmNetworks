@@ -1,6 +1,6 @@
 import rclpy
 from mock_robot.util.robot_util import BaseStatusPub, Util
-from mock_robot.util.time_util import get_timestamp
+from mock_robot.util.time_util import TimeUtil
 from rcl_interfaces.msg import ParameterDescriptor
 # from example_interfaces.msg import String
 # from example_interfaces.msg import Float64
@@ -134,21 +134,21 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         msg = RobotBattery()
         msg.header.nid = self.nid
         msg.data = Util.get_battery()
-        msg.header.time.sec = get_timestamp()
+        msg.header.time.sec = TimeUtil.get_timestamp()
         self.publisher_dict['battery'].publish(msg)
         
         # cpu
         msg = RobotCpu()
         msg.header.nid = self.nid
         msg.data = Util.get_cpu()
-        msg.header.time.sec = get_timestamp()
+        msg.header.time.sec = TimeUtil.get_timestamp()
         self.publisher_dict['cpu'].publish(msg)
 
         # activity
         msg = RobotActivity()
         msg.header.nid = self.nid
         msg.activity = self.activity
-        msg.header.time.sec = get_timestamp()
+        msg.header.time.sec = TimeUtil.get_timestamp()
         self.publisher_dict['activity'].publish(msg)
     
     def geo_timer_callback(self):
@@ -165,7 +165,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         msg.x = float(self.current[0]) # arrays contain numpy.float objects, but geometry_messages requires float
         msg.y = float(self.current[1])
         msg.z = 0.0
-        msg.header.time.sec = get_timestamp()
+        msg.header.time.sec = TimeUtil.get_timestamp()
         self.publisher_dict['point'].publish(msg)
         
         # orientation
@@ -175,7 +175,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         msg.y = 0.0
         msg.z = 0.0
         msg.w = 1.0
-        msg.header.time.sec = get_timestamp()
+        msg.header.time.sec = TimeUtil.get_timestamp()
         self.publisher_dict['orientation'].publish(msg)
 
         # neighbors
@@ -186,7 +186,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         for neighbor in self.neighbor_dict.keys():
             neighbors.append(neighbor)
             strengths.append(self.neighbor_dict[neighbor])
-        msg.header.time.sec = get_timestamp()
+        msg.header.time.sec = TimeUtil.get_timestamp()
         self.publisher_dict['neighbors'].publish(msg)
     
     def misc_timer_callback(self):
@@ -194,7 +194,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         # data["datetime"] = str(datetime.now())
         
         msg = RobotMisc()
-        msg.header.time.sec = get_timestamp()
+        msg.header.time.sec = TimeUtil.get_timestamp()
         msg.header.nid = self.nid
         msg.ipv4 = Util.get_ip()
         msg.mac = Util.get_mac()
