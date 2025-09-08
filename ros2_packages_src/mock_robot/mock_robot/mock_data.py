@@ -54,7 +54,9 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         
         # robot activity
         self.allowed_activities.update({'auto', 'idle', 'manual', 'recharge'})
+        print(self.allowed_activities)
         self.activity = 'auto'
+        print(self.activity)
         self.get_logger().debug('Activity set')
     
 
@@ -180,12 +182,15 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
 
         # neighbors
         neighbors = []
-        strengths = []
+        indicators = [] 
         msg = NeighborList()
+        msg.header.nid = self.nid
         self.neighbor_dict = Util.get_neighbors()
-        for neighbor in self.neighbor_dict.keys():
-            neighbors.append(neighbor)
-            strengths.append(self.neighbor_dict[neighbor])
+        for item in self.neighbor_dict.items():
+            neighbors.append(item[0])
+            indicators.append(item[1])
+        msg.neighbors = neighbors
+        msg.indicators = indicators
         msg.header.time.sec = TimeUtil.get_timestamp()
         self.publisher_dict['neighbors'].publish(msg)
     
@@ -196,8 +201,8 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         msg = RobotMisc()
         msg.header.time.sec = TimeUtil.get_timestamp()
         msg.header.nid = self.nid
-        msg.ipv4 = Util.get_ip()
-        msg.mac = Util.get_mac()
+        # msg.ipv4 = Util.get_ip()
+        msg.mac = self.mac # Util.get_mac()
         self.publisher_dict['misc'].publish(msg)
 
 

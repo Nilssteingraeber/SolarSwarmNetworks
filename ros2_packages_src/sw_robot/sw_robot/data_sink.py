@@ -56,7 +56,7 @@ class RobotStatusSub(BaseStatusSub):
         # subscriptions
         self.subscription_dict['battery'] = self.create_subscription(RobotBattery, 'robot_battery', self.subscription_callback, 10)
         self.subscription_dict['cpu'] = self.create_subscription(RobotCpu, 'robot_cpu', self.subscription_callback, 10)
-        # self.subscription_dict['activity'] = self.create_subscription(RobotActivity, 'robot_activity', self.subscription_callback, 10)
+        self.subscription_dict['activity'] = self.create_subscription(RobotActivity, 'robot_activity', self.subscription_callback, 10)
         self.subscription_dict['point'] = self.create_subscription(RobotPoint, 'robot_point', self.subscription_callback, 10)
         self.subscription_dict['orientation'] = self.create_subscription(RobotQuaternion, 'robot_orientation', self.subscription_callback, 10)
         self.subscription_dict['misc'] = self.create_subscription(RobotMisc, 'robot_misc', self.subscription_callback, 10)
@@ -70,7 +70,7 @@ class RobotStatusSub(BaseStatusSub):
                 if cursor.rowcount:
                     for row in cursor.fetchall():
                         self.__state_map[row[1]] = row[0]
-                    self.__activity_sub = self.create_subscription(RobotActivity, 'robot_activity', self.subscription_callback)
+                    # self.__activity_sub = self.create_subscription(RobotActivity, 'robot_activity', self.subscription_callback)
 
     # properties
     @property
@@ -187,7 +187,7 @@ class RobotStatusSub(BaseStatusSub):
         print('Batch forwarded: %s' % (TimeUtil.get_datetime_f(),))
     
     def check_nid(self, nid) -> bool: # override
-        if not nid in self.nodes.keys():
+        if nid and not nid in self.nodes.keys():
             self.nodes[nid] = {
                 'battery': None,
                 'cpu': None,
@@ -212,7 +212,7 @@ class RobotStatusSub(BaseStatusSub):
                     self.nodes[msg.header.nid]['cpu'] = msg.data
                 case 'RobotActivity':
                     # check if activity_sub exists
-                    if hasattr(self, '__activity_sub'):
+                    if 'activity' in self.subscription_dict.keys():
                         # check if activity has changed
                         if self.nodes[msg.header.nid]['activity'] != msg.activity:
                             # if changed, update activity locally and in DB
@@ -251,7 +251,7 @@ class RobotStatusSub(BaseStatusSub):
                 case 'NeighborList':
                     for i in range(0, len(msg.neighbors)):    
                         # from nodes > get publisher > get neighbors > access i-th neighbor 
-                        self.nodes[msg.header.nid]['neighbors'][msg.neightbors[i]] = msg.indicators[i]
+                        self.nodes[msg.header.nid]['neighbors'][msg.neighbors[i]] = msg.indicators[i]
                 case _:
                     self.get_logger().error('Missing match case for class %s' % (type(msg).__name__))
 

@@ -16,6 +16,7 @@ import re, uuid, psutil
 from abc import ABC, abstractmethod
 from os import cpu_count
 from socket import gethostbyname, gethostname
+from random import randint
 
 
 class BaseStatusPub(ABC, Node):
@@ -70,9 +71,6 @@ class BaseStatusPub(ABC, Node):
     @property
     def timer_dict(self):
         return self.__timer_dict
-    @property
-    def neighbor_dict(self):
-        return self.__neighbor_dict
     
     # read-write properties
     @property
@@ -82,6 +80,14 @@ class BaseStatusPub(ABC, Node):
     def activity(self, a):
         if a in self.allowed_activities:
             self.__activity = a
+        else:
+            self.get_logger().warning('Failed to set activity')
+    @property
+    def neighbor_dict(self):
+        return self.__neighbor_dict
+    @neighbor_dict.setter
+    def neighbor_dict(self, d):
+        self.__neighbor_dict = d
 
     # service callbacks
     @abstractmethod
@@ -133,5 +139,9 @@ class Util(object):
         gethostbyname(gethostname())
 
     @staticmethod
-    def get_neighbors() -> dict:
-        pass # to-do
+    def get_neighbors() -> dict: # to-do: replace with actual function
+        neighbors = dict()
+        neighbors['abc'] = -randint(70, 90)
+        neighbors['def'] = -randint(30, 40)
+        neighbors['ghi'] = -randint(40, 60)
+        return neighbors
