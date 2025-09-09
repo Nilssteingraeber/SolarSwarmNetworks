@@ -18,6 +18,29 @@
 ![mock_robot Ausschnitt src-Verzeichnis](image.png)
 ![sw_robot Ausschnitt src-Verzeichnis](image-1.png)
 
+***Mock-Robot Services.***
+- `set_robot_activity_<nid>` vom Typ SetRobotActivity
+```
+  string activity # neue Aktivität
+  string details "" # Zusatzinformationen wie Route aus Mock-Position für Zustand 'auto'
+  ---
+  string msg # Meldung
+```
+- `robot_service_info_<nid>` vom Typ RobotServiceInfo
+```
+  string service "" # leer oder Suchbegriff
+  ---
+  string msg # Meldung
+  string[] services # Liste aller Services oder aller Services mit Suchbegriff
+```
+- `robot_interface_info_<nid>` vom Typ RobotInterfaceInfo
+```
+  string interface "" # leer oder Interface Name
+  ---
+  string definition # leer oder Definition bei übereinstimmendem Namen
+  string[] interfaces # Liste aller Interfaces oder leer bei übereinstimmendem Namen
+```
+
 ***Daten für die Datenbank.*** *RobotStatusSub* fügt alle 10 Sekunden den aktuellen Status aller mitgeführten Roboter ein, die sich in den letzten 30 Sekunden über ihre NID gemeldet haben. Wird die Aktivität/der Zustand geändert, wird sofort ein UPDATE auf der Tabelle *Robot* ausgeführt, wonach ein Trigger die Änderung in *StateChange* festhält. Hat sich ein Roboter seit mehr als 30 Sekunden nicht mehr gemeldet, werden für ihn keine Statusmeldungen mehr in die Datenbank eingetragen, da sie stets gleich sind. Das Backend kann mit `last_heard` des letzten Eintrags zu einem Roboter in der Tabelle *Status* selbst prüfen, wann sich ein Roboter das letzte Mal gemeldet hat.
 
 ![Vorgeschlagenes Datenbankmodell](../Datenbankmodell/QuickDBD-export.png)
