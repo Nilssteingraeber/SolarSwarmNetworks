@@ -5,7 +5,7 @@
 | Thema            | Inhalt                                                                 |
 |------------------|------------------------------------------------------------------------|
 | Ziel             | Verteiltes Robotersystem ohne zentrale Instanz, modulare Microservices, automatische Synchronisation, UI für Monitoring & Steuerung |
-| Kerntechnologien | **Netzwerk**: batman-adv, Docker, ROS2 Jazzy<br>**Frontend**: VueJS (Node), Cesium, Tilemaker, Tileserver<br>**Backend**: FastAPI, Uvicorn<br>**Datenbank**: PostgreSQL (noch nicht vollständig) |
+| Kerntechnologien | **Netzwerk**: batman-adv, Docker, Docker-Swarm ROS2 Jazzy<br>**Frontend**: VueJS (Node), Cesium, Tilemaker, Tileserver<br>**Backend**: FastAPI, Uvicorn<br>**Datenbank**: PostgreSQL (noch nicht vollständig) |
 | Besonderheit     | Automatisierte Selbstorganisation der Roboter im Mesh-Netzwerk, flexible Service-Platzierung und Synchronisation bei Netzzusammenführungen |
 
 ---
