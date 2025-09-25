@@ -53,9 +53,9 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         self.get_logger().debug('Timers initialized')
         
         # robot activity
-        self.allowed_activities.update({'auto', 'idle', 'manual', 'recharge'})
+        # self.allowed_activities.update({'Idle', 'Charging', 'MoveToPosition', 'Working'}) # standard activities/states since 0.11.0
         print(self.allowed_activities)
-        self.activity = 'auto'
+        self.activity = 'Working'
         print(self.activity)
         self.get_logger().debug('Activity set')
     
@@ -64,7 +64,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
     def set_activity_callback(self, request, response): 
         if request.activity in self.allowed_activities:
             match request.activity:
-                case 'manual':    
+                case 'MoveToPosition':    
                     try:
                         print(request.details, type(request.details))
                         point = loads(request.details) # details must contain a json string with at least valid x and y coordinates 
@@ -74,7 +74,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
                         self.get_logger().error('Failed to parse JSON string %s' % (e,))
                         response.msg = ' Details could not be translated into a point: The field should contain a json string with at least keys x and y and floats as their values.'
                         return response
-                case 'auto':
+                case 'Working':
                     try:
                         route = int(request.details)
                         if route in range(len(self.mock_routes)):

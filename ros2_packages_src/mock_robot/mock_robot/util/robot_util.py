@@ -14,10 +14,14 @@ from custom_interfaces.msg import NeighborList
 from typing import Set
 import re, uuid, psutil
 from abc import ABC, abstractmethod
-from os import cpu_count
+from os import cpu_count, popen, getenv
 from socket import gethostbyname, gethostname
 from random import randint
 
+if getenv('WLANDEV').isalnum():
+    WLANDEV = getenv('WLANDEV')
+else:
+    WLANDEV = None
 
 class BaseStatusPub(ABC, Node):
     def __init__(self, nid, mac):
@@ -29,7 +33,7 @@ class BaseStatusPub(ABC, Node):
         self.__publisher_dict = {}
         self.__service_dict = {}
         self.__action_dict = {}
-        self.__allowed_activities = set() # use add or union to append allowed activities
+        self.__allowed_activities = set(('Idle', 'Charging', 'MoveToPosition', 'Working')) # use .update() to append allowed activities
         self.__activity = ''
         self.__timer_dict = {}
         self.__neighbor_dict = {}
@@ -87,7 +91,10 @@ class BaseStatusPub(ABC, Node):
         return self.__neighbor_dict
     @neighbor_dict.setter
     def neighbor_dict(self, d):
-        self.__neighbor_dict = d
+        if type(d).__name__ == 'dict':
+            self.__neighbor_dict = d
+        elif d == None:
+            self.__neighbor_dict.clear()
 
     # service callbacks
     @abstractmethod
@@ -141,7 +148,26 @@ class Util(object):
     @staticmethod
     def get_neighbors() -> dict: # to-do: replace with actual function
         neighbors = dict()
-        neighbors['abc'] = -randint(70, 90)
-        neighbors['def'] = -randint(30, 40)
-        neighbors['ghi'] = -randint(40, 60)
+        try:
+            if not WLANDEV:
+                raise ValueError('No legal WLAN device was given. String must not have special characters nor be empty.')
+            iw_output = popen(f'sudo iw dev {WLANDEV} station dump').read()
+        except Exception as e:
+            print(e)
+            return None
+        
+        stations = iw_output.split('Station ')
+        for station in stations:
+            if station and len(station) > 17:
+                mac = station[0:17]
+                lines = station[17:].split('\n\t')
+                for line in lines:
+                    if 'signal avg' in line:
+                        signal_avg = line.partition(':')
+                        try:
+                            num = signal_avg[2].lstrip().replace('\t', '').partition(' ')[0] # remove spaces, remove \t, get first value
+                            neighbors[mac] = float(num) # parse float
+                        except:
+                            neighbors[mac] = None
+                        break
         return neighbors
