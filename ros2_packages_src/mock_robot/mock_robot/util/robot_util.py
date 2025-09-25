@@ -82,7 +82,7 @@ class BaseStatusPub(ABC, Node):
         return self.__activity
     @activity.setter
     def activity(self, a):
-        if a in self.allowed_activities:
+        if a in self.__allowed_activities:
             self.__activity = a
         else:
             self.get_logger().warning('Failed to set activity')
@@ -152,6 +152,7 @@ class Util(object):
             if not WLANDEV:
                 raise ValueError('No legal WLAN device was given. String must not have special characters nor be empty.')
             iw_output = popen(f'sudo iw dev {WLANDEV} station dump').read()
+            # iw_output = 'Station 38:00:25:52:f7:10 (on wlp0s20f3)\n\tinactive time:\t8 ms\n\trx bytes:\t783842\n\trx packets:\t16667\n\ttx bytes:\t1364\n\ttx packets:\t10\n\ttx retries:\t3\n\ttx failed:\t0\n\trx drop misc:\t0\n\tsignal:  \t-30 [-30, -32] dBm\n\tsignal avg:\t-29 [-29, -31] dBm\n\ttx duration:\t0 us\n\trx bitrate:\t1.0 MBit/s\n\trx duration:\t0 us\n\tauthorized:\tyes\n\tauthenticated:\tyes\n\tassociated:\tyes\n\tpreamble:\tlong\n\tWMM/WME:\tyes\n\tMFP:\t\tno\n\tTDLS peer:\tno\n\tDTIM period:\t0\n\tbeacon interval:100\n\tconnected time:\t1791 seconds\n\tassociated at [boottime]:\t783.050s\n\tassociated at:\t1758713521111 ms\n\tcurrent time:\t1758715312271 ms\n'
         except Exception as e:
             print(e)
             return None

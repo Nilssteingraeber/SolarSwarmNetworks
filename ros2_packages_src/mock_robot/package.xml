@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>mock_robot</name>
-  <version>0.11.0</version>
+  <version>0.11.1</version>
   <description>This package implements a mock robot which publishes mock data about itself.</description>
   <maintainer email="vincent.welsch@stud.hs-bochum.de">Vincent Welsch</maintainer>
   <license>Apache-2.0</license>

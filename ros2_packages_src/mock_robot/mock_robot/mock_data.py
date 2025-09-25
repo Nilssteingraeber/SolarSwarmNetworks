@@ -156,12 +156,12 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
     def geo_timer_callback(self):
         # point
         # simulate movement towards coordinate goal
-        if not self.activity in ('idle', 'recharge'):
+        if not self.activity in ('Idle', 'Charging'):
             if self.advance_position(): # True if point is reached
-                if self.activity == 'auto':
+                if self.activity == 'Working':
                     self.goal = (self.goal+1) % len(self.points) # determine next goal (cylce back to first)
-                else: # wait when in 'manual'
-                    self.activity = 'idle'
+                else: # wait when in 'MoveToPoint'
+                    self.activity = 'Idle'
         msg = RobotPoint()
         msg.header.nid = self.nid
         msg.x = float(self.current[0]) # arrays contain numpy.float objects, but geometry_messages requires float
