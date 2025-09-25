@@ -128,11 +128,8 @@ Beide Container terminieren, sobald sie laufen. Mit mit `tty` und `stdin_open` k
 Um zu prüfen, ob die Kommunikation zwischen den Knoten gelingt, wurde manuell ein Netzwerk mit `sudo docker network create -d bridge my_network` erstellt und beide Container wie zuvor gestartet.
 `sudo docker run --network=my_network pub` und `sudo docker run --network=my_network sub` in verschiedenen Terminals startet die Container in dem Netzwerk. Nach kurzer Zeit sollten wieder beide ROS2 Nodes miteinander komunizieren - erkennbar an den Ausgaben. Das Ergebnis gleicht dem vorherigen. Docker-Netzwerke scheinen für diesen Test auf einem Gerät überflüssig. 
 
-# Dritter Test: In zwei Containern auf verschiedenen Maschinen
+# Dritter Test: In zwei Containern auf verschiedenen Maschinen (nicht durchgeführt)
 > Overlay networks are often used to create a connection between Swarm services, but you can also use it to connect standalone containers running on different hosts. When using standalone containers, it's still required that you use Swarm mode to establish a connection between the hosts.
 Referenz: https://docs.docker.com/engine/network/drivers/overlay/
 
 Ähnlich wie beim letzten Versuch soll als nächstes ein Netzwerk über zwei Maschinen manuell mit `sudo docker network create -d overlay my_network` erstellt werden. Eine Maschine führt den Publisher-Knoten mit `sudo docker run --network=my_network -it pub` und die andere den Subscriber-Knoten mit `sudo docker run --network=my_network -it sub` aus.
-
-
-# to-do: Test muss noch durchgeführt werden

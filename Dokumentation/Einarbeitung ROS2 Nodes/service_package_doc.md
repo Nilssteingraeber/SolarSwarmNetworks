@@ -187,7 +187,7 @@ Der Service zeigt etwa:
 
 Referenz: https://docs.ros.org/en/jazzy/Tutorials/Beginner-Client-Libraries/Single-Package-Define-And-Use-Interface.html
 
-## Parameter Tests
+## Parameter Tests (nicht durchgeführt)
 Der `simple_client` schickt mehrmals eine Anfrage an den Service. Für diesen Test soll dies in einer Endlosschleife geschehen, um zur Laufzeit Parameter verändern und die Auswirkungen sehen zu können. Zum Starten der Nodes: `ros2 run service_demo simple_service` und `ros2 run service_demo simple_client`
 
 Erster Test:
@@ -203,5 +203,3 @@ Zweiter Test:
 - Ein Service und ein Clients werden gestartet. Mit `ros2 param list` werden ihre Parameter ausgegeben.
 - Mit `ros2 param set <Node> <Parameter>` wird der Wert der `nid` des Clients auf `'1'` gesetzt.
 - Anschließend wird ein zweiter Client gestartet. Eventuell kommt es zu einem Konflikt, da beide `echo_test` heißen sollten.
-
-# to-do: Tests durchführen

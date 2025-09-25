@@ -85,7 +85,7 @@ Erwähnung im roslaunch-Artikel zur ROS2:
 
 Referenz: https://design.ros2.org/articles/roslaunch.html
 
-# Beispiel zu service_demo
+# Beispiel zu service_demo (nicht getestet)
 ```yaml
     %YAML
     ---
@@ -108,5 +108,3 @@ Referenz: https://design.ros2.org/articles/roslaunch.html
                 - name: "nid"
                     value: "11"
 ```
-
-# to-do: Test mit Screenshot

@@ -62,7 +62,7 @@ Referenz: https://docs.docker.com/reference/cli/docker/service/scale/
 Die einzelnen Tasks eines Services lassen sich mit `docker service ps <Service>` tabellarisch anzeigen. Die Ausgabe lässt sich zusätzlich mit `--filter` und `--format` bearbeiten.
 Zum Formatieren und weitere Optionen: https://docs.docker.com/reference/cli/docker/service/scale/
 
-# Einfacher Test
+# Einfacher Test (nicht durchgeführt)
 Allgemeiner Ablauf:
 - Drei Knoten werden mit `docker swarm init` initialisiert
 - Auf einem Knoten wird mit `docker swarm join-token worker` der Befehl ausgegeben, mit dem andere Knoten dem Schwarm beitreten können
@@ -93,7 +93,7 @@ Dritter Test:
 - In `docker service ls` sollten 2/3 aktiv sein
 - Erste Manager versucht, mit seinem eigenen Token wieder beizutreten
 
-# Test mit ROS2 Service
+# Test mit ROS2 Service (nicht definiert, nicht durchgeführt)
 
 Zwischenablage
     "Because manager nodes are meant to be a stable component of the infrastructure, you should use a fixed IP address for the advertise address to prevent the swarm from becoming unstable on machine reboot.
