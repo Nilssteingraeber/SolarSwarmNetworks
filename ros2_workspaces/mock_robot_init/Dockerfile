@@ -1,7 +1,0 @@
-FROM ros:jazzy
-COPY mock_data_init /home/ubuntu/solarswarm/
-COPY mock_robot_install.zip /home/ubuntu/solarswarm/
-COPY unzip.py /home/ubuntu/solarswarm/
-WORKDIR /home/ubuntu/solarswarm
-SHELL ["/bin/bash", "-c"]
-ENTRYPOINT ["bash", "mock_data_init.bash"]

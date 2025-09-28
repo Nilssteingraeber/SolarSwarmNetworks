@@ -1,8 +1,0 @@
-services:
-  mock_robot:
-    build:
-      - context: .
-      - dockerfile: Dockerfile
-    network: host
-    environment:
-      - WLANDEV: 'wlp0s20f3'
