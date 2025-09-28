@@ -1,5 +1,5 @@
 # Einleitung
-Dieser Abschnitt baut auf `first_package_doc.md` auf. An Stelle eines Publisher-Subscriber-Modells soll hier ein einfaches Service-Client-Modell mit einem eigenen Dateninterface und Variablen für den implementiert werden. Services und Clients werden jeweils als eigene ROS2 Node. Da der Erzeugungsprozess dem der vorherigen Nodes ähnelt, werden die notwendigen Schritte kurzgefasst.
+Dieser Abschnitt baut auf `first_package_doc.md` auf. An Stelle eines Publisher-Subscriber-Modells soll hier ein einfaches Service-Client-Modell mit einem eigenen Dateninterface und Variablen implementiert werden. Services und Clients werden jeweils als eigene ROS2 Node umgesetzt. Da der Erzeugungsprozess dem der vorherigen Nodes ähnelt, werden die notwendigen Schritte kurzgefasst.
 
 1. ROS2 sourcen:
     - `source /opt/ros/jazzy/setup.bash` in jeder neuen Konsole oder `echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc` zum Automatisieren
@@ -83,13 +83,15 @@ Die Node `echo_client` hat zwei Parameter:
 
 # ROS2 Interfaces
 ## Allgemeines
-ROS2 Interfaces definieren den Inhalt von Anfragen und Antworten von Nodes. In `solarswarm/src/service_demo` werden die Verzeichnisse `msg`, `srv` und `action` benötigt. In einer Datei mit der Endung `.msg`, `.srv` und `.action` können Attributnamen und Datentypen für eine Message (Publisher-Subscriber), einen Service (Request-Response) oder eine Action (Request-Response-Feedback) definiert werden:
+ROS2 Interfaces definieren den Inhalt von Anfragen und Antworten von Nodes. In `solarswarm/src/custom_interfaces` werden die Verzeichnisse `msg`, `srv` und `action` benötigt. In einer Datei mit der Endung `.msg`, `.srv` und `.action` können Attributnamen und Datentypen für eine Message (Publisher-Subscriber), einen Service (Request-Response) oder eine Action (Request-Response-Feedback) definiert werden:
 - Grundsätzliches Schema (Kleinbuchstaben): `<datentyp> <attributname>`
 - Default-Werte: `<datentyp> <attributname> <wert>`
 - Konstanten (Großbuchstaben): `<DATENTYP> <ATTRIBUTNAME>=<wert>`
 - Kommentare: `#`
 - In `.srv` wird der Inhalt zwischen Request und Response geteilt mit einer Zeile `---`
 - In `.action` wird der Inhalt zwischen Request, Response und Feedback (regelmäßige Updates) geteilt mit einer Zeile `---`
+
+> Hinweis: Verwendet eine ROS2 Node Interfaces eines anderen Packages, ist das Package der Node von diesem Package abhängig. Für diesen Abschnitt liegt im selben Workspace eine Kopie von `custom_interfaces` v0.3.1, welche ebenfalls gebaut werden muss.
 
 Beispiel für `.srv`:
 ```
@@ -166,7 +168,7 @@ Abhängigkeiten in `package.xml` der `service_demo`:
     <exec_depend>custom_interfaces</exec_depend>
 ```
 
-Anschließend müssen beide Packages mit `colcon build` gebaut und mit `source ~/solarswarm/install/local_setup.bash` gesourct werden. Dann können Service und Client in zwei verschiedenen Terminals gestartet werden mit `ros2 run service_demo simple_service` und `ros2 run service_demo simple_client`.
+Anschließend müssen beide Packages mit `colcon build` gebaut und mit `source ~/solarswarm/install/local_setup.bash` gesourct werden. Dann können Service und Client in zwei verschiedenen Terminals gestartet werden mit `ros2 run service_demo echo_service` und `ros2 run service_demo echo_client`.
 
 Ist der Service noch nicht verfügbar, sieht die Ausgabe des Clients so aus:
 ```
@@ -188,18 +190,116 @@ Der Service zeigt etwa:
 Referenz: https://docs.ros.org/en/jazzy/Tutorials/Beginner-Client-Libraries/Single-Package-Define-And-Use-Interface.html
 
 ## Parameter Tests (nicht durchgeführt)
-Der `simple_client` schickt mehrmals eine Anfrage an den Service. Für diesen Test soll dies in einer Endlosschleife geschehen, um zur Laufzeit Parameter verändern und die Auswirkungen sehen zu können. Zum Starten der Nodes: `ros2 run service_demo simple_service` und `ros2 run service_demo simple_client`
+Der `echo_client` schickt mehrmals eine Anfrage an den Service. Für diesen Test soll er dies in einer Endlosschleife tun, um zur Laufzeit Parameter verändern und die Auswirkungen sehen zu können. Zum Starten der Nodes: `ros2 run service_demo echo_service` und `ros2 run service_demo echo_client`
 
+### Beschreibung
 Erster Test:
 - Ein Service und Client werden gestartet. Mit `ros2 param list` werden ihre Parameter ausgegeben.
 - Mit `ros2 param get <Node> <Parameter>` wird der Wert der `nid` des Clients ausgegeben.
-- Mit `ros2 param set <Node> <Parameter>` wird der Wert der `nid` des Clients auf `'1'` gesetzt. Die Ausgabe sollte sich verändern.
-- Mit `ros2 param set <Node> <Parameter>` wird der Wert der `msg` des Clients auf `Hello World` gesetzt. Erneut sollte sich die Ausgabe verändern.
-- Mit `ros2 param dump <Node> > param_test_dump.yaml` werden die Parameter-Werte gepseichert und der Client beendet.
+- Mit `ros2 param set <Node> <Parameter> <Wert>` wird der Wert der `nid` des Clients auf `'1'` gesetzt. Die Ausgabe sollte sich verändern.
+- Mit `ros2 param set <Node> <Parameter> <Wert>` wird der Wert der `msg` des Clients auf `Hello World` gesetzt. Erneut sollte sich die Ausgabe verändern.
+- Mit `ros2 param dump <Node> > param_test_dump.yaml` werden die Parameter-Werte gepseichert und der Client mit per Keyboard Interrupt beendet.
 - Anschließend wird der Client mit `ros2 run service_demo simple_client --ros-args --params-file param_test_dump.yaml` neugestartet.
 - Die Ausgabe sollte wieder gleich sein. Mit `ros2 param get <Node> <Parameter>` können die Parameter-Werte nochmal geprüft werden.
 
-Zweiter Test:
-- Ein Service und ein Clients werden gestartet. Mit `ros2 param list` werden ihre Parameter ausgegeben.
-- Mit `ros2 param set <Node> <Parameter>` wird der Wert der `nid` des Clients auf `'1'` gesetzt.
-- Anschließend wird ein zweiter Client gestartet. Eventuell kommt es zu einem Konflikt, da beide `echo_test` heißen sollten.
+### Testergebnisse - Erster Test
+Verfügbare Parameter auflisten
+
+![Ausgabe param list](param_list.png)
+```
+    /echo_client:
+        msg
+        nid
+        start_type_description_service
+        use_sim_time
+    /echo_service:
+        start_type_description_service
+        use_sim_time
+```
+
+---
+Parameter `msg` ausgeben
+
+![Ausgabe param get](param_get.png)
+```
+    String value is: 0
+```
+
+---
+Parameter `nid` setzen
+
+![Ausgabe param set nid](param_set_nid.png)
+```
+    Set parameter successful
+```
+![Änderung der nid](andere_nid.png)
+```
+    [INFO] [1758888775.700564676] [echo_service]: Received from 0:
+    Default message
+
+    [INFO] [1758888777.710457812] [echo_service]: Received from '1':
+    Default message
+```
+
+---
+Parameter `msg` setzen
+
+![Ausgabe param set msg](param_set_msg.png)
+```
+    Set parameter successful
+```
+![Änderung der msg](andere_msg.png)
+```
+    [INFO] [1758889067.332794182] [echo_service]: Received from '1':
+    Default message
+
+    [INFO] [1758889069.337620766] [echo_service]: Received from '1':
+    Hello World!
+```
+
+---
+Parameter speichern
+
+```bash
+    ros2 param dump echo_client > param_test_dump.yaml
+```
+![Ausgabe param dump](param_dump.png)
+
+---
+Neustart des Clients mit Parametern
+
+![Neustart mit args](ros2_run_echo_client_args.png)
+![Ausgabe nach Empfang](selbe_nid_msg.png)
+
+
+Während des ersten Tests verhielt sich `ros2 param` wie erwartet. Jedoch fiel auf, dass das Holen und Ändern von Parametern über das `roscli` regelmäßig (unabhängig von `sleep(5)`) zwischen zwei und fünf Sekunden dauert. Diese Verzögerung vermutlich auf einen Overhead beim Aufruf eines Services zurückzuführen ist. `ros2 services list` listet zu jeder ROS2-Node Services für Parameter auf. Daher ist davon auszugehen, dass `ros2 param` einen Service aufruft. Demnach bietet der `echo_client` mehrere Service Server an; das `roscli` muss daher einen Client starten und auf den Server warten, um diese anzufragen und so Parameter zu holen oder zu setzen.
+
+Um dies zu prüfen, wurde analog eine kleine Testreihe mit dem Echo-Service durchgeführt. Sie zeigt, dass für die Initialisierung von *EchoClient* auf einen verfügbaren Service Server (hier: `echo_service`) gewartet wird. Beim wiederholten Ausführen von `ros2 run service_demo echo_client` kam es manchmal vor, dass länger auf einen Server gewartet werden musste und der von *EchoClient* im Konstruktor festgelegte Timeout von einer Sekunde überschritten wurde.
+
+Ausschnitt aus `simple_client.py` mit Zeitstempeln:
+```python
+    t0 = time()
+    rclpy.init()
+    t1 = time()
+    # print('------') # zeigt klarer, dass Initialisierung von EchoClient auf Service Server wartet
+    echo_client = EchoClient()
+    t2 = time()
+    echo_client.get_logger().info('rclp init:\t%f' % (t1-t0,))
+    echo_client.get_logger().info('EchoClient init:\t%f' % (t2-t1,))
+    
+    #for i in range (0, 11):
+    while True:
+        t3 = time()
+        future = echo_client.send_request()
+        rclpy.spin_until_future_complete(echo_client, future)
+        response = future.result()
+        t4 = time()
+        echo_client.get_logger().info('Echo received after %f s: %s' % (t4-t3, response.msg))
+        sleep(5)
+```
+
+Auswahl von Ergebnissen (a) ohne Timeout, (b) mit Timeout und (c) mit Timeout und `-----`:
+
+![alt text](client_init_no_timeout.png)
+![alt text](client_init_timeout_1.png)
+![alt text](client_init_timeout_2.png)

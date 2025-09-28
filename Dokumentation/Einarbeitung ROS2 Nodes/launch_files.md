@@ -54,20 +54,20 @@ Launch files ermöglichen es auch, Argumente mit Default-Werten zu deklarieren, 
 
 Teil eines Beispiels zu `arg` in YAML:
 ```yaml
-    %YAML
-    ---
-    launch:
-        - arg:
-            name: "background_r"
-            default: "0"
-        - node:
-            pkg: "turtlesim"
-            exec: "turtlesim_node"
-            name: "sim"
-            namespace: "turtlesim2"
-            param:
-                - name: "background_r"
-                    value: "$(var background_r)"
+  %YAML
+  ---
+  launch:
+    - arg:
+      name: "background_r"
+      default: "0"
+    - node:
+      pkg: "turtlesim"
+      exec: "turtlesim_node"
+      name: "sim"
+      namespace: "turtlesim2"
+      param:
+      - name: "background_r"
+        value: "$(var background_r)"
 
 ```
 
@@ -87,24 +87,26 @@ Referenz: https://design.ros2.org/articles/roslaunch.html
 
 # Beispiel zu service_demo (nicht getestet)
 ```yaml
-    %YAML
+    %YAML 1.2
     ---
     launch:
         - node:
             pkg: "service_demo"
-            exec: "simple_service"
+            exec: "echo_service"
             name: "echo_service"
             namespace: "echo"
-            param:
-                - name: "nid"
-                    value: "10"
 
         - node:
             pkg: "service_demo"
-            exec: "simple_client"
+            exec: "echo_client"
             name: "echo_client"
             namespace: "echo"
             param:
-                - name: "nid"
-                    value: "11"
+            -
+                name: "nid"
+                value: "11"
+            -
+                name: "msg"
+                value: "Hello World!"
 ```
+![Ausgabe ros2 launch](service_demo_launch_output.png)

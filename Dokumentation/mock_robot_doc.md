@@ -32,10 +32,10 @@ Referenz: https://www.geeksforgeeks.org/python/extracting-mac-address-using-pyth
 
 ## Verwendung
 ### Vorbereitung
-Das Projekt beinhaltet neben Implementierungen die bereits gebauten Packages `mock_robot`, `data_sink` und `custom_interfaces`. Allgemein wird ein Verzeichnis `install/` im Arbeitsverzeichnis erzeugt, wenn mit colcon gebaut wird. Für die Verwendung von Nodes reicht dieses Verzeichnis. In `ros2_workspaces` sind komprimierte und umbenannte `install`-Verzeichnisse. Sollten Änderungen vorgenommen oder die Packages aus anderen Gründen neu gebaut werden müssen, ist eine Internetverbindung erforderlich. `mock_robot` und `data_sink` hängen beide von `custom_interfaces` ab. Die Installation der Äbhängigkeiten das Bauen erfolgen mit
+Das Projekt beinhaltet neben dem Source Code in `ros2_packages_src` auch Workspaces mit den gebauten Packages `mock_robot`, `data_sink` und `custom_interfaces` in `ros2_workspaces`. In `ros2_workspaces` sind komprimierte Verzeichnisse mit Kopien dieser Workspaces, sowie weiteren Dateien zum Testen auf Robotern. Sollten Änderungen vorgenommen oder die Packages aus anderen Gründen neu gebaut werden müssen, ist eventuell eine Internetverbindung erforderlich. `mock_robot` und `data_sink` hängen beide von `custom_interfaces` ab. Die Installation der Äbhängigkeiten das Bauen erfolgen mit
 ```bash
     rosdep install -i --from-path src --rosdistro jazzy -y
-    colcon build [--packages-select <Package>]
+    colcon build [--packages-select <Package> [<weiteres Package>]]
 ```
 Ist durch Modifikationen an diesem Package die Installation weiterer Packages oder Python-Module notwendig, müssen ihre entsprechenden rosdep Schlüssel der `package.xml` des relevanten Packages hinzugefügt werden. Generell finden Änderungen in `src` statt und erfordern, das betroffene Packages neu gebaut werden.
 
@@ -54,7 +54,7 @@ Diese Tabelle stellt die Zugehörigkeit der geforderten Topics zu ihren Interfac
 | robot_point | RobotPoint | geo | Drei Koordinaten x, y und z als 64-bit floats |
 | robot_orientation | RobotQuaternion | geo | Vier Werte x, y, z, w als 64-bit floats |
 | robot_misc | RobotMisc | misc | IPv4, IPv6 und MAC als Strings |
-| neighbors | NeighborList | geo | Liste an NIDs von Nachbarn und parallele Liste an Indikatoren (ein float je Nachbar) für die Verbindungsqualität |
+| neighbors | NeighborList | geo | Liste an NIDs von Nachbarn und parallele Liste an Indikatoren (ein float je Nachbar; Einheit `dBm`) für die Verbindungsqualität |
 
 Die Nachrichten auf diesen Topics können mit `ros2 topic echo <Topic>` abgehört oder mit Subscriptions, die mit entsprechenden Message Interfaces lauschen, verarbeitet werden. Das Package `sw_robot` implementiert eine Node `data_sink`, welche Scubscriptions für die oben genannten Topics implementiert und kann dazu als Vorlage diesnen. Ein Beispiel wird später zur Erläuterung der Node gezeigt.
 
@@ -73,13 +73,13 @@ Die folgenden Services des Mock-Roboters können mit `ros2 service call` oder du
 | string frame_id "" | |
 | Time time | |
 
-| RobotBattery | RobotCpu | RobotActivity | RobotPoint | RobotQuaternion | RobotMisc |
-|--------------|----------|---------------|------------|-----------------|-----------|
-| Header header | Header header | Header header | Header header | Header header | Header header |
-| float64 data | float64 data | string activity | float64 x | float64 x | string ipv4 |
-| | | | float64 y | float64 y| string ipv6 |
-| | | | float64 z | float64 z| string mac |
-| | | | | float64 w | |
+| RobotBattery | RobotCpu | RobotActivity | RobotPoint | RobotQuaternion | RobotMisc | NeighborList |
+|--------------|----------|---------------|------------|-----------------|-----------|--------------|
+| Header header | Header header | Header header | Header header | Header header | Header header | Header header |
+| float64 data | float64 data | string activity | float64 x | float64 x | string ipv4 | string[] neighbors
+| | | | float64 y | float64 y| string ipv6 | float64[] indicators |
+| | | | float64 z | float64 z| string mac | |
+| | | | | float64 w | | |
 
 | SetRobotActivity | RobotServiceInfo | RobotInterfaceInfo |
 |------------------|------------------|--------------------|
@@ -117,17 +117,17 @@ Services werden auf ähnliche Weise importiert, jedoch werden Antworten auf Serv
 
 Aus Tests mit der Python built-in-Funktion `type()` geht hervor, dass `request` und `response` zwei verschiedenen Klassen angehören. In diesem Fall haben sie die Klassennamen (mit `type(request).__name__`) *RobotServiceInfo_Request* und *RobotServiceInfo_Response*. Wegen der Umsetzung der Interfaces als Klassen, lässt sich zu diesen ein Klassendiagramm zeichnen:
 
-![custom_interfaces Klassen](<custom_interfaces_class diagram.svg>)
+![custom_interfaces Klassen](Diagramme_intern/custom_interfaces_class diagram.svg)
 
 ## Klasse MockRobotStatusPub
 Der Mock-Roboter ist eine ROS2 Node `mock_data`. Implementiert wird diese als Klasse *MockRobotStatusPub* in `mock_robot/mock_robot/mock_data.py`, welche von *BaseStatusPub* und *MockPosition* erbt.
 
-![mock_robot Klassen](<mock_robot_class diagram.svg>)
+![mock_robot Klassen](Diagramme_intern/mock_robot_class diagram.svg)
 
-*MockRobotStatusPub* implementiert drei Timer (Intervalle durch Parameter übergeben) mit entsprechenden Timer-Callback-Funktionen. Diese veröffentlichen Nachrichten auf den oben genannten Topics. Die genannten Publishers und Services werden im Konstruktor der Oberklasse *BaseStatusPub* erstellt. Die Service-Callback-Funktionen müssen jedoch in *MockRobotStatusPub* überschrieben werden. Für Publishers, Services, Actions und Timers werden mehrere Dictionaries angelegt. Die Schlüssel der erstellten Publishers und Services entsprechen ihren Bezeichnungen ohne `'robot'`: battery, cpu, activity, point, orientation, misc, set_activity, service_info und interface_info (als Strings).
+*MockRobotStatusPub* implementiert drei Timer (Intervalle durch Parameter übergeben) mit entsprechenden Timer-Callback-Funktionen. Diese veröffentlichen Nachrichten auf den oben genannten Topics. Die genannten Publishers und Services werden im Konstruktor der Oberklasse *BaseStatusPub* erstellt. Die Service-Callback-Funktionen müssen jedoch in *MockRobotStatusPub* überschrieben werden. Für Publishers, Services, Actions und Timers werden mehrere Dictionaries angelegt. Die Schlüssel der erstellten Publishers und Services entsprechen ihren Bezeichnungen ohne `'robot'`: battery, cpu, activity, point, orientation, misc, neighbors, set_activity, service_info, interface_info (als Strings).
 
 *MockPosition* simuliert die Bewegung auf einer von drei Formen: Entlang einer Linie, eines Dreiecks oder eines Vierecks. Die Formen sind eine Liste aus zwei bis vier Koordinaten, gespeichert als Vektoren aus dem Modul `numpy` in `points`. `points` ist eine zufällig aus `mock_routes` gewählte Liste. Das Modul `numpy` erlaubt das Rechnen mit Vektoren. Eine Position `current` läuft schrittweise auf einen Punkt in `points` zu und hält dabei eine maximale Schrittweite `max_vec_len` ein. `goal` ist der Index des anzustrebenden Punktes in `points`.
-Der Geo-Timer-Callback in *MockRobotStatusPub* entscheidet, dass bei `activity == 'auto'` nach erreichen eines Zielpunktes der nächste (oder erste, falls am Ende von `points`) angestrebt werden soll und bei `activity == 'manual'` in `'idle'` gewechselt wird. Bei `activity in ('idle', 'recharge')`.
+Der Geo-Timer-Callback in *MockRobotStatusPub* entscheidet, dass bei `activity == 'Working'` nach erreichen eines Zielpunktes der nächste (oder erste, falls am Ende von `points`) angestrebt werden soll und bei `activity == 'MoveToPoint'` in `'Idle'` gewechselt wird. Bei `activity in ('Idle', 'Charging')`.
 
 *Util* hat mehrere statische Methoden, die Systeminformationen wie Batteriestand oder MAC-Adresse bestimmen.
 
@@ -139,26 +139,26 @@ Methoden:
 - @goal.setter goal(g) - `g` muss ein valider Index von points sein.
 - @max_vec_len.setter max_vec_len(m) - `m` muss ein positiver Float sein.
 - @current.setter current(a) - `a` muss ein Objekten der Klasse `numpy.ndarray` sein. Die Länge des Arrays und der Typ seiner Elemente müssen mit `current` übereinstimmen.
-- set_activity_callback(request, response) - Ausgelöst durch den Service *SetRobotActivity*. Erhält eine gültige, vordefinierte Aktivität aus `('auto', 'idle', 'manual', 'recharge')` und antwortet, ob `activity` erfolgreich gesetzt wurde. Für `'manual'` wird versucht, Koordinaten aus einem JSON-String in `details` zu lesen und `points` mit diesen zu überschreiben. Für `'auto'` wird versucht, einen Index aus `details` für `mock_routes` zu lesen.
+- set_activity_callback(request, response) - Ausgelöst durch den Service *SetRobotActivity*. Erhält eine gültige, vordefinierte Aktivität aus `('Working', 'Idle', 'MoveToPoint', 'Charging')` und antwortet, ob `activity` erfolgreich gesetzt wurde. Für `'MoveToPoint'` wird versucht, Koordinaten aus einem JSON-String in `details` zu lesen und `points` mit diesem einen Punkt zu überschreiben. Für `'Working'` wird versucht, einen Index aus `details` für `mock_routes` zu lesen.
 - system_timer_callback() - Ermittelt sequentiell Batteriestand und durchschnittliche CPU-Last der letzten Minute. Beide Daten und die Aktivität werden auf ihren jeweilen Topics veröffentlicht. Ein negativer Wert für den Batteriestand deutet an, dass dieser nicht ermittelt werden konnte.
 - geo_timer_callback() - Berechnet anhand `current`, `points`, `goal` und `max_vec_len` einen neuen Vektor für `current` und veröffentlicht diesen. Für die Orientierung werden die Default-Werte von *geometry_msgs.msg.Point* veröffentlicht.
 - misc_timer_callback() - Veröffentlicht IP-Adresse, MAC-Adresse, und Datetime.
 
-> Hinweis: Getter und Setter werden implizit aufgerufen. Innerhalb der Klasse: `temp = self.activity` und `self.activity = 'idle'`.  
+> Hinweis: Getter und Setter werden implizit aufgerufen. Innerhalb der Klasse: `temp = self.activity` und `self.activity = 'Idle'`.  
 > Warnung: Aktuell werfen Setter keine Fehler, falls das Setzen eines Werts fehlgeschlagen ist. `points` kann jedoch `ValueError` erzeugen.
 
 
 ## Die Klasse RobotStatusSub
 Der Data Sink ist eine ROS2 Node `data_sink`. Implementiert wird diese als Klasse *RobotStatusSub* in `sw_robot/sw_robot/data_sink.py`, welche von der Klasse *BaseStatusSub* erbt.
 
-![data_sink Klassen](<data_sink_class diagram.svg>)
+![data_sink Klassen](Diagramme_intern/data_sink_class diagram.svg)
 
 *RobotStatusPub* implementiert einen Timer (Intervall durch Parameter übergeben) mit entsprechender Timer-Callback-Funktion. Diese schreibt batchweise alle Zustände der bekannten Roboter in eine Datenbank (`forward_batch`) oder gibt sie aus (`forward_batch_test`). `__batch_timer` (`batch_intervall` default 10.0) ruft `batch_timer_callback` auf, welcher `forward_batch` aufruft und einen Zeitstempel ausgibt. `subscription_callback` wird von allen Subscriptions in `subscriptions` aufgerufen und nimmt eine Fallunterscheidung für die Klasse der Nachricht vor. `nodes` beinhaltet die `nid` einer Node als Schlüssel und ein `dict` mit Daten als Wert. Die Schlüssel-Werte-Paare sind `'battery'`, `'cpu'`, etc.. `check_nid` prüft, ob die `nid` einer Nachricht in `nodes` vorhanden ist. Falls nicht, wird ein Eintrag mit leerem Daten-`dict` erstellt.
 *BaseStatusPub* definiert `forward_batch` und die Callback-Funktionen, jedoch müssen jedoch überschrieben werden. `connect_db` versucht bei fehlender oder geschlossener Verbindung zu einer Datenbank, eine neue Verbindung aufzubauen. Dazu werden die Umgebungsvariablen `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST` und `DB_PORT` abgefragt. Die Methode gibt `True` zurück, falls zuletzt eine gültige Verbindung besteht (erspart nicht das Abfangen mit try-catch-Blöcken). *RobotStatusSub* versucht in `forward_batch` fünf Male, eine Verbindung aufzubauen mit je einer Sekunde Pause zwischen Versuchen. Ist die für das Einfügen einer Statusmeldung in die Datenbank benötigte `robot_id` einer Node nicht in `self.nid_map` vorhanden, meldet `register_new_nodes` neue Roboter in der Datenbank an und holt sich eine aktuelle Liste. Die Umgebungsvariablen `DB_TABLE_NAMES_*` und `DB_COLUMN_NAMES_*` können an die zugehörige Datenbank angepasst werden.
 
 Beispielhafte Ausgabe einer Node durch `forward_batch_test`:
 
-![forward_batch_test Ausgabe](forward_batch_test_output.png)
+![forward_batch_test Ausgabe](Diagramme_intern/forward_batch_test_output.png)
 
 `check_nid` prüft, ob die NID im Header einer Nachricht bekannt ist und legt bei Bedarf einen Eintrag in `self.nodes` an. Die Funktion definiert folgende Struktur einer Node in Form eines dict:
 ```python
@@ -172,7 +172,7 @@ Beispielhafte Ausgabe einer Node durch `forward_batch_test`:
         'ipv4': ?, # null | str
         'ipv6': ?, # null | str
         'mac': ?, # null | str
-        'neighbors': {?: ?} # leer oder <str>:<float> für neigbor zu strength
+        'neighbors': {?: ?} # leer oder <str>:<float> für neigbor und signal quality
     }
 ```
 
@@ -181,7 +181,7 @@ Beispielhafte Ausgabe einer Node durch `forward_batch_test`:
 ## Datenfluss
 Im folgenden Abschnitt soll auf den Zusammenhang der Netzwerkkomponenten eingegangen werden. Zunächst sei diese Abbildung zu betrachten:
 
-![Publisher-Subscriber bei zwei Robotern](sw_message_flow.svg)
+![Publisher-Subscriber bei zwei Robotern](Diagramme_intern/sw_message_flow.svg)
 
 Grundlegend für den Verkehr von ROS2 Nachrichten ist die ROS Middleware (RMW). Sie basiert laut ROS2 Dokumentation auf dem Industriestandard DDS/RTPS (Data Distribution Service/Real-Time Publish-Subscribe Protocol), welcher für die Entdeckung von Knoten und die Serialisierung, sowie den Transport von Daten zuständig ist. Wir verwenden per Standardkonfiguration von ROS2 Jazzy eProsimas Fast DDS aufgrund der Apache 2 Lizenz.
 
@@ -198,13 +198,3 @@ In der angeführten Abbildung dargestellt sind zwei Roboter, die sich im selben 
 Laut offizieller Docker Dokumentation sind Container von den Netzwerken des Hosts isoliert. Für batman-adv ist es daher möglich, dass `host` anstatt `overlay` als Netzwerktreiber für Docker Netzwerke benötigt werden.
 
 Referenz: https://docs.docker.com/engine/network/
-
-| Schicht | Zuordnung am OSI-Referenzmodell |
-|---|---------------------------------------|
-| **7** Anwendungsschicht      | ROS2 Node im Container publiziert oder empfängt Daten |
-| **6** Darstellungsschicht    | Umwandlung der ROS2 Nachricht durch RMW |
-| **5** Sitzungsschicht        | Sitzung durch RMW |
-| **4** Transportschicht       | UDP/TCP zwischen Containern |
-| **3** Vermittlungsschicht    | Routing zwischen Containern durch Docker Swarm |
-| **2** Sicherungsschicht      | MAC-basiertes Mesh-Routing durch BATMAN-adv |
-| **1** Bitübertragungsschicht | WLAN-Hardware |
