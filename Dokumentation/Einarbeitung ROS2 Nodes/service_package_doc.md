@@ -119,7 +119,7 @@ Zu jedem Datentyp kann ein Array angelegt werden. Die offizielle Dokumentation b
 
 Übersicht der Datentypen:
 
-![Tabelle der Datentypen](ros2_interface_datatypes.png)
+![Tabelle der Datentypen](../../ros2_interface_datatypes.png)
 
 Referenz: https://docs.ros.org/en/jazzy/Concepts/Basic/About-Interfaces.html
 

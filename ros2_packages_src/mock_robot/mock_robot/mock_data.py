@@ -47,16 +47,16 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
             self.get_parameter('misc_intervall').get_parameter_value())
         
         # init timers
-        self.timer_dict['system'] = self.create_timer(SYSTEM, self.system_timer_callback)
-        self.timer_dict['geo'] = self.create_timer(GEO, self.geo_timer_callback)
-        self.timer_dict['misc'] = self.create_timer(MISC, self.misc_timer_callback)
+        self.createTimer('system', SYSTEM, self.system_timer_callback)
+        self.createTimer('geo', GEO, self.geo_timer_callback)
+        self.createTimer('misc', MISC, self.misc_timer_callback)
         self.get_logger().debug('Timers initialized')
         
         # robot activity
         # self.allowed_activities.update({'Idle', 'Charging', 'MoveToPosition', 'Working'}) # standard activities/states since 0.11.0
         print(self.allowed_activities)
         self.activity = 'Working'
-        print(self.activity)
+        print('Initial activity:', self.activity)
         self.get_logger().debug('Activity set')
     
 
@@ -137,21 +137,21 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         msg.header.nid = self.nid
         msg.data = Util.get_battery()
         msg.header.time.sec = TimeUtil.get_timestamp()
-        self.publisher_dict['battery'].publish(msg)
+        self.getPublisher('battery').publish(msg)
         
         # cpu
         msg = RobotCpu()
         msg.header.nid = self.nid
         msg.data = Util.get_cpu()
         msg.header.time.sec = TimeUtil.get_timestamp()
-        self.publisher_dict['cpu'].publish(msg)
+        self.getPublisher('cpu').publish(msg)
 
         # activity
         msg = RobotActivity()
         msg.header.nid = self.nid
         msg.activity = self.activity
         msg.header.time.sec = TimeUtil.get_timestamp()
-        self.publisher_dict['activity'].publish(msg)
+        self.getPublisher('activity').publish(msg)
     
     def geo_timer_callback(self):
         # point
@@ -168,7 +168,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         msg.y = float(self.current[1])
         msg.z = 0.0
         msg.header.time.sec = TimeUtil.get_timestamp()
-        self.publisher_dict['point'].publish(msg)
+        self.getPublisher('point').publish(msg)
         
         # orientation
         msg = RobotQuaternion()
@@ -178,7 +178,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         msg.z = 0.0
         msg.w = 1.0
         msg.header.time.sec = TimeUtil.get_timestamp()
-        self.publisher_dict['orientation'].publish(msg)
+        self.getPublisher('orientation').publish(msg)
 
         # neighbors
         neighbors = []
@@ -192,7 +192,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         msg.neighbors = neighbors
         msg.indicators = indicators
         msg.header.time.sec = TimeUtil.get_timestamp()
-        self.publisher_dict['neighbors'].publish(msg)
+        self.getPublisher('neighbors').publish(msg)
     
     def misc_timer_callback(self):
         # datetime using format 'year-month-day hour:min:sec.ms'
@@ -203,7 +203,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         msg.header.nid = self.nid
         # msg.ipv4 = Util.get_ip()
         msg.mac = self.mac # Util.get_mac()
-        self.publisher_dict['misc'].publish(msg)
+        self.getPublisher('misc').publish(msg)
 
 
 

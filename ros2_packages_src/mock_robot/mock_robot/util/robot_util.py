@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.action import ActionServer
 from custom_interfaces.srv import SetRobotActivity
 from custom_interfaces.srv import RobotServiceInfo
 from custom_interfaces.srv import RobotInterfaceInfo
@@ -24,6 +25,8 @@ if w and w.isalnum():
 else:
     WLANDEV = None
 
+DUMP = '/tmp/iw_dump/iw_dump.txt'
+
 class BaseStatusPub(ABC, Node):
     def __init__(self, nid, mac):
         super().__init__('mock_robot_status_pub_%s' % (nid,))
@@ -38,21 +41,90 @@ class BaseStatusPub(ABC, Node):
         self.__activity = ''
         self.__timer_dict = {}
         self.__neighbor_dict = {}
-
-        # init services
-        self.__service_dict['set_activity'] = self.create_service(SetRobotActivity, 'set_robot_activity_%s' % (self.__nid,), self.set_activity_callback) 
-        self.__service_dict['service_info'] = self.create_service(RobotServiceInfo, 'robot_service_info_%s' % (self.__nid,), self.service_info_callback)
-        self.__service_dict['interface_info'] = self.create_service(RobotInterfaceInfo, 'robot_interface_info_%s' % (self.__nid,), self.interface_info_callback)
         
         # init publishers
-        self.publisher_dict['battery'] = self.create_publisher(RobotBattery, 'robot_battery', 3) # as percent, i.e. 78.46
-        self.publisher_dict['cpu'] = self.create_publisher(RobotCpu, 'robot_cpu', 3) # as percentage, i.e. 34.00
-        self.publisher_dict['activity'] = self.create_publisher(RobotActivity, 'robot_activity', 3)
-        self.publisher_dict['point'] = self.create_publisher(RobotPoint, 'robot_point', 3)
-        self.publisher_dict['orientation'] = self.create_publisher(RobotQuaternion, 'robot_orientation', 3)
-        self.publisher_dict['misc'] = self.create_publisher(RobotMisc, 'robot_misc', 3)
-        self.publisher_dict['neighbors'] = self.create_publisher(NeighborList, 'neighbors', 3)
+        self.createPublisher('battery', RobotBattery, 'robot_battery') # 3 by default
+        self.createPublisher('cpu', RobotCpu, 'robot_cpu')
+        self.createPublisher('activity', RobotActivity, 'robot_activity')
+        self.createPublisher('point', RobotPoint, 'robot_point')
+        self.createPublisher('orientation', RobotQuaternion, 'robot_orientation')
+        self.createPublisher('misc', RobotMisc, 'robot_misc')
+        self.createPublisher('neighbors', NeighborList, 'neighbors')
         self.get_logger().debug('Publishers initialized')
+        
+        # init services
+        self.createService('set_activity', SetRobotActivity, 'set_robot_activity_%s' % (self.__nid,), self.set_activity_callback)
+        self.createService('service_info', RobotServiceInfo, 'robot_service_info_%s' % (self.__nid,), self.service_info_callback)
+        self.createService('interface_info', RobotInterfaceInfo, 'robot_interface_info_%s' % (self.__nid,), self.interface_info_callback)
+        
+    # getter and create functions
+    def getPublisher(self, key):
+        if key in self.__publisher_dict.keys():
+            return self.__publisher_dict[key]
+        return None
+    def getService(self, key):
+        if key in self.__service_dict.keys():
+            return self.__service_dict[key]
+        return None
+    def getAction(self, key):
+        if key in self.__action_dict.keys():
+            return self.__action_dict[key]
+        return None
+    def getTimer(self, key):
+        if key in self.__timer_dict.keys():
+            return self.__timer_dict[key]
+        return None
+    def createPublisher(self, key, cls, topic, queue=3) -> bool:
+        if type(key).__name__ != 'str':
+            self.get_logger().error("Failed to add publisher: Key must be a string")
+        elif key in self.__publisher_dict.keys():
+            self.get_logger().error("Failed to add publisher: Key %s already taken", (key,))
+        elif queue < 1:
+            self.get_logger().error("Failed to add publisher: Queue length too small")
+        else:
+            try:
+                self.__publisher_dict[key] = self.create_publisher(cls, topic, queue)
+                return True
+            except Exception as e:
+                self.get_logger().error("Failed to add publisher: Invalid class or topic")
+        return False
+    def createService(self, key, cls, service_name, callback) -> bool:
+        if type(key).__name__ != 'str':
+            self.get_logger().error("Failed to add service: Key must be a string")
+        elif key in self.__service_dict.keys():
+            self.get_logger().error("Failed to add service: Key %s already taken", (key,))
+        else:
+            try:
+                self.__service_dict[key] = self.create_service(cls, service_name, callback)
+                return True
+            except Exception as e:
+                self.get_logger().error("Failed to add service: Invalid class or callback")
+        return False
+    def createAction(self, key, cls, action_name, callback=None) -> bool:
+        if type(key).__name__ != 'str':
+            self.get_logger().error("Failed to add action: Key must be a string")
+        elif key in self.__action_dict.keys():
+            self.get_logger().error("Failed to add action: Key %s already taken", (key,))
+        else:
+            try:
+                self.__action_dict[key] = ActionServer(self, 
+                cls, service_name, callback)
+                return True
+            except Exception as e:
+                self.get_logger().error("Failed to add action: Invalid class or callback")
+        return False
+    def createTimer(self, key, sec, callback) -> bool:
+        if type(key).__name__ != 'str':
+            self.get_logger().error("Failed to add timer: Key must be a string")
+        elif key in self.__timer_dict.keys():
+            self.get_logger().error("Failed to add timer: Key %s already taken", (key,))
+        else:
+            try:
+                self.__timer_dict[key] = self.create_timer(sec, callback)
+                return True
+            except Exception as e:
+                self.get_logger().error("Failed to add timer: Invalid class or callback")
+        return False
     
     # read-only properties (dict entries can still be changed)
     @property
@@ -62,20 +134,11 @@ class BaseStatusPub(ABC, Node):
     def mac(self):
         return self.__mac
     @property
-    def publisher_dict(self):
-        return self.__publisher_dict
-    # @property
-    # def service_dict(self):
-    #     return self.__service_dict
-    @property
     def action_dict(self):
         return self.__action_dict
     @property
     def allowed_activities(self):
         return self.__allowed_activities
-    @property
-    def timer_dict(self):
-        return self.__timer_dict
     
     # read-write properties
     @property
@@ -147,12 +210,11 @@ class Util(object):
         gethostbyname(gethostname())
 
     @staticmethod
-    def get_neighbors() -> dict: # to-do: replace with actual function
+    def get_neighbors() -> dict:
         neighbors = dict()
         try:
-            if not WLANDEV:
-                raise ValueError('No legal WLAN device was given. String must not have special characters nor be empty.')
-            iw_output = popen(f'sudo iw dev {WLANDEV} station dump').read()
+            iw_output = popen(f'cat {DUMP}').read()
+            print("Got iw_dump.txt")
         except Exception as e:
             print(e)
             return None
@@ -168,7 +230,8 @@ class Util(object):
                         try:
                             num = signal_avg[2].lstrip().replace('\t', '').partition(' ')[0] # remove spaces, remove \t, get first value
                             neighbors[mac] = float(num) # parse float
-                        except:
+                        except Exception as e:
                             neighbors[mac] = None
+                            print(e)
                         break
         return neighbors
