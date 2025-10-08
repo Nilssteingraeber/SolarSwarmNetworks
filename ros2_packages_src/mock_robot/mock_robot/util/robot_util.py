@@ -12,12 +12,12 @@ from custom_interfaces.msg import RobotQuaternion
 from custom_interfaces.msg import RobotMisc
 from custom_interfaces.msg import NeighborList
 
-from typing import Set
 import re, uuid, psutil
 from abc import ABC, abstractmethod
 from os import cpu_count, popen, getenv
 from socket import gethostbyname, gethostname
 from random import randint
+from mock_robot.util.time_util import TimeUtil
 
 w = getenv('WLANDEV')
 if w and w.isalnum():
@@ -62,18 +62,22 @@ class BaseStatusPub(ABC, Node):
         if key in self.__publisher_dict.keys():
             return self.__publisher_dict[key]
         return None
+    
     def getService(self, key):
         if key in self.__service_dict.keys():
             return self.__service_dict[key]
         return None
+    
     def getAction(self, key):
         if key in self.__action_dict.keys():
             return self.__action_dict[key]
         return None
+    
     def getTimer(self, key):
         if key in self.__timer_dict.keys():
             return self.__timer_dict[key]
         return None
+    
     def createPublisher(self, key, cls, topic, queue=3) -> bool:
         if type(key).__name__ != 'str':
             self.get_logger().error("Failed to add publisher: Key must be a string")
@@ -88,6 +92,7 @@ class BaseStatusPub(ABC, Node):
             except Exception as e:
                 self.get_logger().error("Failed to add publisher: Invalid class or topic")
         return False
+    
     def createService(self, key, cls, service_name, callback) -> bool:
         if type(key).__name__ != 'str':
             self.get_logger().error("Failed to add service: Key must be a string")
@@ -100,6 +105,7 @@ class BaseStatusPub(ABC, Node):
             except Exception as e:
                 self.get_logger().error("Failed to add service: Invalid class or callback")
         return False
+    
     def createAction(self, key, cls, action_name, callback=None) -> bool:
         if type(key).__name__ != 'str':
             self.get_logger().error("Failed to add action: Key must be a string")
@@ -108,11 +114,12 @@ class BaseStatusPub(ABC, Node):
         else:
             try:
                 self.__action_dict[key] = ActionServer(self, 
-                cls, service_name, callback)
+                cls, action_name, callback)
                 return True
             except Exception as e:
                 self.get_logger().error("Failed to add action: Invalid class or callback")
         return False
+    
     def createTimer(self, key, sec, callback) -> bool:
         if type(key).__name__ != 'str':
             self.get_logger().error("Failed to add timer: Key must be a string")
@@ -126,50 +133,82 @@ class BaseStatusPub(ABC, Node):
                 self.get_logger().error("Failed to add timer: Invalid class or callback")
         return False
     
+    def updateAllowedActivities(self, items) -> bool:
+        if type(items).__name__ not in ('list', 'set', 'tuple'):
+            self.get_logger().error('Failed to update allowed_activities: Items should be in a list, set, or tuple')
+        else:
+            for item in items:
+                if type(item).__name__ != 'str':
+                    self.get_logger().error('Failed to update allowed_activities: Items must all be strings')
+                    break
+            else: # if all items valid
+                try:
+                    self.__allowed_activities.update(items)
+                    return True
+                except Exception as e:
+                    self.get_logger().error('Failed to update allowed_activities: %s', (e,))
+        return False
+    
     # read-only properties (dict entries can still be changed)
     @property
     def nid(self):
         return self.__nid
+    
     @property
     def mac(self):
         return self.__mac
-    @property
-    def action_dict(self):
-        return self.__action_dict
+    
     @property
     def allowed_activities(self):
-        return self.__allowed_activities
+        return self.__allowed_activities.copy()
     
+
     # read-write properties
     @property
     def activity(self):
         return self.__activity
+    
     @activity.setter
     def activity(self, a):
         if a in self.__allowed_activities:
             self.__activity = a
         else:
             self.get_logger().warning('Failed to set activity')
+
     @property
     def neighbor_dict(self):
-        return self.__neighbor_dict
+        return self.__neighbor_dict.copy()
+    
     @neighbor_dict.setter
     def neighbor_dict(self, d):
         if type(d).__name__ == 'dict':
             self.__neighbor_dict = d
         elif d == None:
             self.__neighbor_dict.clear()
+    
 
     # service callbacks
     @abstractmethod
     def set_activity_callback(self, request, response):
         raise Exception(self.__please_override)
+    
     @abstractmethod
     def service_info_callback(self, request, response):
         raise Exception(self.__please_override)
+    
     @abstractmethod
     def interface_info_callback(self, request, response):
         raise Exception(self.__please_override)
+    
+    # other
+    def addHeader(self, msg):
+        try:
+            msg.header.nid = self.nid
+            msg.header.time.sec = TimeUtil.get_timestamp()
+            return True
+        except:
+            return False
+
     
     
 
@@ -198,16 +237,22 @@ class Util(object):
         if battery != None: # sensors_battery() returns None-object if battery can not be found
             return battery.percent
         else:
-            return -1.0
+            return -1.0 # could not get information
 
     @staticmethod
     def get_cpu() -> float:
-        load1, load5, load15 = psutil.getloadavg() # returns 3 values
-        return (load1 / cpu_count()) * 100 # average of last minute
+        try:
+            load1, load5, load15 = psutil.getloadavg() # returns 3 values
+            return (load1 / cpu_count()) * 100 # average of last minute
+        except:
+            return -1.0 # could not get information
 
     @staticmethod
     def get_ip() -> str:
-        gethostbyname(gethostname())
+        try:
+            return gethostbyname(gethostname())
+        except:
+            return None
 
     @staticmethod
     def get_neighbors() -> dict:

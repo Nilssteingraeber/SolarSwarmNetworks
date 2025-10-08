@@ -134,24 +134,21 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
     def system_timer_callback(self):
         # battery
         msg = RobotBattery()
-        msg.header.nid = self.nid
         msg.data = Util.get_battery()
-        msg.header.time.sec = TimeUtil.get_timestamp()
-        self.getPublisher('battery').publish(msg)
+        if self.addHeader(msg):
+            self.getPublisher('battery').publish(msg)
         
         # cpu
         msg = RobotCpu()
-        msg.header.nid = self.nid
         msg.data = Util.get_cpu()
-        msg.header.time.sec = TimeUtil.get_timestamp()
-        self.getPublisher('cpu').publish(msg)
+        if self.addHeader(msg):
+            self.getPublisher('cpu').publish(msg)
 
         # activity
         msg = RobotActivity()
-        msg.header.nid = self.nid
         msg.activity = self.activity
-        msg.header.time.sec = TimeUtil.get_timestamp()
-        self.getPublisher('activity').publish(msg)
+        if self.addHeader(msg):
+            self.getPublisher('activity').publish(msg)
     
     def geo_timer_callback(self):
         # point
@@ -160,50 +157,46 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
             if self.advance_position(): # True if point is reached
                 if self.activity == 'Working':
                     self.goal = (self.goal+1) % len(self.points) # determine next goal (cylce back to first)
-                else: # wait when in 'MoveToPoint'
+                elif self.activity == 'MoveToPoint': # wait after 'MoveToPoint'
                     self.activity = 'Idle'
         msg = RobotPoint()
-        msg.header.nid = self.nid
-        msg.x = float(self.current[0]) # arrays contain numpy.float objects, but geometry_messages requires float
+        msg.x = float(self.current[0]) # beware: arrays contain numpy.float objects, but msg requires normal float
         msg.y = float(self.current[1])
         msg.z = 0.0
-        msg.header.time.sec = TimeUtil.get_timestamp()
-        self.getPublisher('point').publish(msg)
+        if self.addHeader(msg):
+            self.getPublisher('point').publish(msg)
         
         # orientation
         msg = RobotQuaternion()
-        msg.header.nid = self.nid
         msg.x = 0.0
         msg.y = 0.0
         msg.z = 0.0
         msg.w = 1.0
-        msg.header.time.sec = TimeUtil.get_timestamp()
-        self.getPublisher('orientation').publish(msg)
+        if self.addHeader(msg):
+            self.getPublisher('orientation').publish(msg)
 
         # neighbors
         neighbors = []
         indicators = [] 
         msg = NeighborList()
-        msg.header.nid = self.nid
         self.neighbor_dict = Util.get_neighbors()
         for item in self.neighbor_dict.items():
             neighbors.append(item[0])
             indicators.append(item[1])
         msg.neighbors = neighbors
         msg.indicators = indicators
-        msg.header.time.sec = TimeUtil.get_timestamp()
-        self.getPublisher('neighbors').publish(msg)
+        if self.addHeader(msg):
+            self.getPublisher('neighbors').publish(msg)
     
     def misc_timer_callback(self):
         # datetime using format 'year-month-day hour:min:sec.ms'
         # data["datetime"] = str(datetime.now())
         
         msg = RobotMisc()
-        msg.header.time.sec = TimeUtil.get_timestamp()
-        msg.header.nid = self.nid
         # msg.ipv4 = Util.get_ip()
         msg.mac = self.mac # Util.get_mac()
-        self.getPublisher('misc').publish(msg)
+        if self.addHeader(msg):
+            self.getPublisher('misc').publish(msg)
 
 
 
