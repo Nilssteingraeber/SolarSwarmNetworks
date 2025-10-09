@@ -30,9 +30,9 @@ DUMP = '/tmp/iw_dump/iw_dump.txt'
 class BaseStatusPub(ABC, Node):
     def __init__(self, nid, mac):
         super().__init__('mock_robot_status_pub_%s' % (nid,))
+        self.__please_override = 'This method of BaseStatusSub does not do anything. Please overwrite it in a child class.'
         self.__nid = nid
         self.__mac = mac
-        self.__please_override = 'This method of BaseStatusSub does not do anything. Please overwrite it in a child class.'
 
         self.__publisher_dict = {}
         self.__service_dict = {}
@@ -84,53 +84,53 @@ class BaseStatusPub(ABC, Node):
         elif key in self.__publisher_dict.keys():
             self.get_logger().error("Failed to add publisher: Key %s already taken", (key,))
         elif queue < 1:
-            self.get_logger().error("Failed to add publisher: Queue length too small")
+            self.get_logger().error('Failed to add publisher: Queue length too small')
         else:
             try:
                 self.__publisher_dict[key] = self.create_publisher(cls, topic, queue)
                 return True
             except Exception as e:
-                self.get_logger().error("Failed to add publisher: Invalid class or topic")
+                self.get_logger().error('Failed to add publisher: %s', (e,))
         return False
     
     def createService(self, key, cls, service_name, callback) -> bool:
         if type(key).__name__ != 'str':
-            self.get_logger().error("Failed to add service: Key must be a string")
+            self.get_logger().error('Failed to add service: Key must be a string')
         elif key in self.__service_dict.keys():
-            self.get_logger().error("Failed to add service: Key %s already taken", (key,))
+            self.get_logger().error('Failed to add service: Key %s already taken', (key,))
         else:
             try:
                 self.__service_dict[key] = self.create_service(cls, service_name, callback)
                 return True
             except Exception as e:
-                self.get_logger().error("Failed to add service: Invalid class or callback")
+                self.get_logger().error('Failed to add service: %s', (e,))
         return False
     
     def createAction(self, key, cls, action_name, callback=None) -> bool:
         if type(key).__name__ != 'str':
-            self.get_logger().error("Failed to add action: Key must be a string")
+            self.get_logger().error('Failed to add action: Key must be a string')
         elif key in self.__action_dict.keys():
-            self.get_logger().error("Failed to add action: Key %s already taken", (key,))
+            self.get_logger().error('Failed to add action: Key %s already taken', (key,))
         else:
             try:
                 self.__action_dict[key] = ActionServer(self, 
                 cls, action_name, callback)
                 return True
             except Exception as e:
-                self.get_logger().error("Failed to add action: Invalid class or callback")
+                self.get_logger().error('Failed to add action: %s', (e,))
         return False
     
     def createTimer(self, key, sec, callback) -> bool:
         if type(key).__name__ != 'str':
             self.get_logger().error("Failed to add timer: Key must be a string")
         elif key in self.__timer_dict.keys():
-            self.get_logger().error("Failed to add timer: Key %s already taken", (key,))
+            self.get_logger().error('Failed to add timer: Key %s already taken', (key,))
         else:
             try:
                 self.__timer_dict[key] = self.create_timer(sec, callback)
                 return True
             except Exception as e:
-                self.get_logger().error("Failed to add timer: Invalid class or callback")
+                self.get_logger().error('Failed to add timer: %s', (e,))
         return False
     
     def updateAllowedActivities(self, items) -> bool:
@@ -190,15 +190,15 @@ class BaseStatusPub(ABC, Node):
     # service callbacks
     @abstractmethod
     def set_activity_callback(self, request, response):
-        raise Exception(self.__please_override)
+        pass
     
     @abstractmethod
     def service_info_callback(self, request, response):
-        raise Exception(self.__please_override)
+        pass
     
     @abstractmethod
     def interface_info_callback(self, request, response):
-        raise Exception(self.__please_override)
+        pass
     
     # other
     def addHeader(self, msg):

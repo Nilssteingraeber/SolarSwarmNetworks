@@ -65,7 +65,7 @@ def test_set_neighbor_dict(node):
     assert len(node.neighbor_dict) == 0 # 'Failed to clear neighbor_dict'
 
 
-# create and get pub/sub/service/action/timer
+# create and get pub/service/action/timer
 def test_create_getPublisher(node):
     assert node.createPublisher('test', RobotBattery, 'test_topic') # 'Failed to create publisher'
     assert node.getPublisher('test') != None # 'Failed to get publisher'

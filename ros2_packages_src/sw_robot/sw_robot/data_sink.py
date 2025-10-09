@@ -18,6 +18,8 @@ from sw_robot.util.sw_util import BaseStatusSub
 from psycopg2 import Error
 from os import getenv
 
+FORWARD_TO_DB = getenv('FORWARD_TO_DB') # forward to DB unless not set
+
 DB_TABLE_NAMES = {
     'robot': getenv('DB_TABLE_NAME_ROBOT'),
     'neighbor': getenv('DB_TABLE_NAME_NEIGHBOR'),
@@ -54,32 +56,36 @@ class RobotStatusSub(BaseStatusSub):
         self.__state_map = dict() # <activity>:<state_id>
         
         # subscriptions
-        self.subscription_dict['battery'] = self.create_subscription(RobotBattery, 'robot_battery', self.subscription_callback, 10)
-        self.subscription_dict['cpu'] = self.create_subscription(RobotCpu, 'robot_cpu', self.subscription_callback, 10)
-        self.subscription_dict['activity'] = self.create_subscription(RobotActivity, 'robot_activity', self.subscription_callback, 10)
-        self.subscription_dict['point'] = self.create_subscription(RobotPoint, 'robot_point', self.subscription_callback, 10)
-        self.subscription_dict['orientation'] = self.create_subscription(RobotQuaternion, 'robot_orientation', self.subscription_callback, 10)
-        self.subscription_dict['misc'] = self.create_subscription(RobotMisc, 'robot_misc', self.subscription_callback, 10)
-        self.subscription_dict['neighbors'] = self.create_subscription(NeighborList, 'neighbors', self.subscription_callback, 10)
+        self.createSubscription('battery', RobotBattery, 'robot_battery', self.subscription_callback)
+        self.createSubscription('cpu', RobotCpu, 'robot_cpu', self.subscription_callback)
+        self.createSubscription('activity', RobotActivity, 'robot_activity', self.subscription_callback)
+        self.createSubscription('point', RobotPoint, 'robot_point', self.subscription_callback)
+        self.createSubscription('orientation', RobotQuaternion, 'robot_orientation', self.subscription_callback)
+        self.createSubscription('misc', RobotMisc, 'robot_misc', self.subscription_callback)
+        self.createSubscription('neighbors', NeighborList, 'neighbors', self.subscription_callback)
         self.get_logger().debug('Subscriptions initialized')
 
-        # create activity_sub if DB defines states
+        # get states with IDs from DB
         if self.connect_db():
             with self.conn.cursor() as cursor:
-                cursor.execute("SELECT * FROM State")
+                cursor.execute('SELECT * FROM State')
                 if cursor.rowcount:
                     for row in cursor.fetchall():
+                        # row[0] = id, row[1] = description
                         self.__state_map[row[1]] = row[0]
-                    # self.__activity_sub = self.create_subscription(RobotActivity, 'robot_activity', self.subscription_callback)
+    
 
     # properties
     @property
     def nid_map(self):
         return self.__nid_map
+    
     @property
     def state_map(self):
         return self.__state_map
 
+
+    # methods
     def forward_batch_test(self):
         for nid in self.nodes.keys():
             output = nid
@@ -87,13 +93,12 @@ class RobotStatusSub(BaseStatusSub):
                 output += f'\n\t{key}: {self.nodes[nid][key]}'
             print(output, end="\n\n")
     
-    # methods
     def register_new_nodes(self, cursor):
         unregistered = False
         # find nids without robot_id
         try:
             for node in self.nodes.keys():
-                if node not in self.db_robot_ids.keys():
+                if node not in self.nid_map.keys():
                     cursor.execute('INSERT INTO %s (%s) VALUES (%s)', (
                         DB_TABLE_NAMES['robot'],
                         DB_COLUMN_NAMES['nid'],
@@ -109,7 +114,7 @@ class RobotStatusSub(BaseStatusSub):
                     DB_COLUMN_NAMES['nid'],
                     DB_TABLE_NAMES['robot']
                 ))
-                # update nid-to-robot_id map
+                # update nid-to-robot_id map (nid_map)
                 if not cursor.rowcount:
                     self.get_logger().error('Failed to forward batch: No robots found')
                     return
@@ -128,8 +133,8 @@ class RobotStatusSub(BaseStatusSub):
                         self.register_new_nodes(cursor)
                         for nid in self.nodes.keys():
                             if t - self.nodes[nid]['last'] < 30:
-                                cursor.execute("""INSERT INTO %s (%s, %s, %s, %s, %s, %s, %s, %s)
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""", (
+                                cursor.execute('''INSERT INTO %s (%s, %s, %s, %s, %s, %s, %s, %s)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)''', (
                                         # table name
                                         DB_TABLE_NAMES['status'],
                                         # column names
@@ -153,8 +158,8 @@ class RobotStatusSub(BaseStatusSub):
                                     )
                                 )
                                 for neighbor in self.nodes[nid]['neighbors'].keys():
-                                    cursor.execute("""INSERT INTO %s (%s, %s, %s)
-                                        VALUES (%s, %s, %s)""", (
+                                    cursor.execute('''INSERT INTO %s (%s, %s, %s)
+                                        VALUES (%s, %s, %s)''', (
                                             # table name
                                             DB_TABLE_NAMES['neighbor'],
                                             # column names
@@ -178,16 +183,20 @@ class RobotStatusSub(BaseStatusSub):
                     self.get_logger().error('DB connection failed: %s' % (e,))
             else:
                 tries -= 1
-                sleep(1)
+                sleep(0.2)
+
 
     # timer callbacks
     def batch_timer_callback(self):
-        self.forward_batch_test()
-        # self.forward_batch()
-        print('Batch forwarded: %s' % (TimeUtil.get_datetime_f(),))
+        if not FORWARD_TO_DB:
+            self.forward_batch_test() # print
+        else:
+            self.forward_batch() # forward to DB
+        # print('Batch forwarded: %s' % (TimeUtil.get_datetime_f(),))
+        self.get_logger().info('Batch forwarded: %s' % (TimeUtil.get_datetime_f(),))
     
-    def check_nid(self, nid) -> bool: # override
-        if nid and not nid in self.nodes.keys():
+    def check_nid(self, nid) -> bool: # override; allows all
+        if nid and nid not in self.nodes.keys():
             self.nodes[nid] = {
                 'battery': None,
                 'cpu': None,
@@ -201,6 +210,7 @@ class RobotStatusSub(BaseStatusSub):
             }
         return True
 
+
     # subscription callbacks
     def subscription_callback(self, msg):
         if self.check_nid(msg.header.nid):
@@ -211,8 +221,8 @@ class RobotStatusSub(BaseStatusSub):
                 case 'RobotCpu':
                     self.nodes[msg.header.nid]['cpu'] = msg.data
                 case 'RobotActivity':
-                    # check if activity_sub exists
-                    if 'activity' in self.subscription_dict.keys():
+                    # check if activity_sub exists and if activity is legal
+                    if self.getSubscription('activity') and msg.activity in self.state_map.keys():
                         # check if activity has changed
                         if self.nodes[msg.header.nid]['activity'] != msg.activity:
                             # if changed, update activity locally and in DB
@@ -220,10 +230,10 @@ class RobotStatusSub(BaseStatusSub):
                             if self.connect_db():
                                 try:
                                     with self.conn.cursor() as cursor:
-                                        cursor.execute("""UPDATE %s
+                                        cursor.execute('''UPDATE %s
                                             SET %s = %s
                                             WHERE %s = %s
-                                            """, (
+                                            ''', (
                                                     DB_TABLE_NAMES['robot'],
                                                     DB_COLUMN_NAMES['activity'],
                                                     self.__state_map[msg.activity],
@@ -238,22 +248,28 @@ class RobotStatusSub(BaseStatusSub):
                                     except:
                                         self.get_logger().error('Error: Rollback failed')
                 case 'RobotPoint':
-                    self.nodes[msg.header.nid]['point'] = {'x': msg.x, 'y': msg.y, 'z': msg.z}
+                    point = {'x': msg.x, 'y': msg.y, 'z': msg.z}
+                    if self.validate_point(point):
+                        self.nodes[msg.header.nid]['point'] = point
                 case 'RobotQuaternion':
-                    self.nodes[msg.header.nid]['orientation'] = {'x': msg.x, 'y': msg.y, 'z': msg.z, 'w': msg.w}
+                    quaternion = {'x': msg.x, 'y': msg.y, 'z': msg.z, 'w': msg.w}
+                    if self.validate_quaternion(quaternion):
+                        self.nodes[msg.header.nid]['orientation'] = quaternion
                 case 'RobotMisc':
-                    if msg.ipv4:
+                    if self.validate_ipv4(msg.ipv4):
                         self.nodes[msg.header.nid]['ipv4'] = msg.ipv4
-                    if msg.ipv6:
+                    if self.validate_ipv6(msg.ipv6):
                         self.nodes[msg.header.nid]['ipv6'] = msg.ipv6
-                    if msg.mac:
+                    if self.validate_mac(msg.mac):
                         self.nodes[msg.header.nid]['mac'] = msg.mac
                 case 'NeighborList':
-                    for i in range(0, len(msg.neighbors)):    
-                        # from nodes > get publisher > get neighbors > access i-th neighbor 
-                        self.nodes[msg.header.nid]['neighbors'][msg.neighbors[i]] = msg.indicators[i]
+                    for i in range(0, len(msg.neighbors)):
+                        # from nodes > get publisher > get neighbors > access i-th neighbor
+                        if self.validate_neighbor(msg.neighbors[i]) and self.validate_indicator(msg.indicators[i]):
+                            self.nodes[msg.header.nid]['neighbors'][msg.neighbors[i]] = msg.indicators[i]
                 case _:
                     self.get_logger().error('Missing match case for class %s' % (type(msg).__name__))
+
 
 
 def main():
