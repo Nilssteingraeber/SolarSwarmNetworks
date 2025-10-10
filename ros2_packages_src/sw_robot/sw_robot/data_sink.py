@@ -11,43 +11,16 @@ from custom_interfaces.msg import RobotQuaternion
 from custom_interfaces.msg import RobotMisc
 from custom_interfaces.msg import NeighborList
 
-from json import loads
+from json import loads, dumps
 from time import sleep
 from sw_robot.util.time_util import TimeUtil
 from sw_robot.util.sw_util import BaseStatusSub
 from psycopg2 import Error
 from os import getenv
 
-FORWARD_TO_DB = getenv('FORWARD_TO_DB') # forward to DB unless not set
-
-DB_TABLE_NAMES = {
-    'robot': getenv('DB_TABLE_NAME_ROBOT'),
-    'neighbor': getenv('DB_TABLE_NAME_NEIGHBOR'),
-    'status': getenv('DB_TABLE_NAME_STATUS'),
-}
-
-DB_COLUMN_NAMES = {
-    # ROBOT
-    'robot_id': getenv('DB_COLUMN_NAME_ROBOT_ID'),
-    'nid': getenv('DB_COLUMN_NAME_NID'),
-    'ipv4': getenv('DB_COLUMN_NAME_IPV4'),
-    'ipv6': getenv('DB_COLUMN_NAME_IPV6'),
-    'mac': getenv('DB_COLUMN_NAME_MAC'),
-    # STATE
-    'state_id': getenv('DB_COLUMN_NAME_STATE_ID'),
-    'state': getenv('DB_COLUMN_NAME_STATE_'),
-    # STATUS
-    'status_id': getenv('DB_COLUMN_NAME_STATUS_ID'),
-    'battery': getenv('DB_COLUMN_NAME_BATTERY'),
-    'cpu': getenv('DB_COLUMN_NAME_CPU_1'),
-    'point': getenv('DB_COLUMN_NAME_POINT'),
-    'orientation': getenv('DB_COLUMN_NAME_ORIENTATION'),
-    'last_heard': getenv('DB_COLUMN_NAME_LAST_HEARD'),
-    # 'misc': getenv('DB_COLUMN_NAME_MISC'),
-    # NEIGHBOR
-    'neighbor': getenv('SB_COLUMN_NAME_NEIGHBOR'),
-    'strength': getenv('DB_COLUMN_NAME_STRENGTH'),
-}
+FORWARD_TO_DB = getenv('FORWARD_TO_DB') # forward to DB unless not set to anything
+env = getenv('TRIES_TO_GET_STATES')
+TRIES_TO_GET_STATES = int(env) if env and env.isnumeric else 1
 
 class RobotStatusSub(BaseStatusSub):
     def __init__(self):
@@ -66,13 +39,22 @@ class RobotStatusSub(BaseStatusSub):
         self.get_logger().debug('Subscriptions initialized')
 
         # get states with IDs from DB
-        if self.connect_db():
-            with self.conn.cursor() as cursor:
-                cursor.execute('SELECT * FROM State')
-                if cursor.rowcount:
-                    for row in cursor.fetchall():
-                        # row[0] = id, row[1] = description
-                        self.__state_map[row[1]] = row[0]
+        for _ in range(TRIES_TO_GET_STATES):
+            if self.connect_db():
+                try:
+                    with self.conn.cursor() as cursor:
+                        cursor.execute('SELECT * FROM state')
+                        if cursor.rowcount:
+                            for row in cursor.fetchall():
+                                # row[0] = id, row[1] = description
+                                self.__state_map[row[1]] = row[0]
+                    break
+                except Exception as e:
+                    self.get_logger().error('Failed to get states from DB: %s', (e,))
+                    self.get_logger().info('Trying again in 10s')
+                    sleep(10)
+        if not len(self.__state_map):
+            self.get_logger().warning('Failed to get states from DB multiple times. Continuing without any state definitions.')
     
 
     # properties
@@ -87,11 +69,16 @@ class RobotStatusSub(BaseStatusSub):
 
     # methods
     def forward_batch_test(self):
-        for nid in self.nodes.keys():
-            output = nid
-            for key in self.nodes[nid].keys():
-                output += f'\n\t{key}: {self.nodes[nid][key]}'
-            print(output, end="\n\n")
+        try:
+            with open('forward_batch_test_output', 'w') as f:
+                for nid in self.nodes.keys():
+                    output = nid
+                    for key in self.nodes[nid].keys():
+                        output += f'\n\t{key}: {self.nodes[nid][key]}'
+                    print(output, end="\n\n")
+                    f.write(output + '\n\n')
+        except:
+            self.get_logger().error('Failed during execution of forward_batch_test')
     
     def register_new_nodes(self, cursor):
         unregistered = False
@@ -99,21 +86,18 @@ class RobotStatusSub(BaseStatusSub):
         try:
             for node in self.nodes.keys():
                 if node not in self.nid_map.keys():
-                    cursor.execute('INSERT INTO %s (%s) VALUES (%s)', (
-                        DB_TABLE_NAMES['robot'],
-                        DB_COLUMN_NAMES['nid'],
+                    cursor.execute('INSERT INTO robot (nid, ipv4, ipv6, mac) VALUES (%s, %s, %s, %s)', (
                         node,
+                        self.nodes[node]['ipv4'],
+                        self.nodes[node]['ipv6'],
+                        self.nodes[node]['mac'],
                     ))
                     unregistered = True
             # if at least one is found
             if unregistered:
                 self.conn.commit()
                 # get all robot_ids
-                cursor.execute('SELECT %s, %s FROM %s', (
-                    DB_COLUMN_NAMES['robot_id'],
-                    DB_COLUMN_NAMES['nid'],
-                    DB_TABLE_NAMES['robot']
-                ))
+                cursor.execute('SELECT robot_id, nid FROM robot')
                 # update nid-to-robot_id map (nid_map)
                 if not cursor.rowcount:
                     self.get_logger().error('Failed to forward batch: No robots found')
@@ -133,46 +117,27 @@ class RobotStatusSub(BaseStatusSub):
                         self.register_new_nodes(cursor)
                         for nid in self.nodes.keys():
                             if t - self.nodes[nid]['last'] < 30:
-                                cursor.execute('''INSERT INTO %s (%s, %s, %s, %s, %s, %s, %s, %s)
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)''', (
-                                        # table name
-                                        DB_TABLE_NAMES['status'],
-                                        # column names
-                                        DB_COLUMN_NAMES['robot_id'],
-                                        DB_COLUMN_NAMES['battery'],
-                                        DB_COLUMN_NAMES['cpu'],
-                                        DB_COLUMN_NAMES['point'],
-                                        DB_COLUMN_NAMES['orientation'],
-                                        DB_COLUMN_NAMES['ipv4'],
-                                        DB_COLUMN_NAMES['ipv6'],
-                                        DB_COLUMN_NAMES['mac'],
-                                        # values
+                                cursor.execute('''INSERT INTO status (robot_id, battery, cpu_1, point, orientation, last_heard)
+                                    VALUES (%s, %s, %s, %s, %s, %s)''', (
                                         self.nid_map[nid],
                                         self.nodes[nid]['battery'],
                                         self.nodes[nid]['cpu'],
-                                        self.nodes[nid]['point'],
-                                        self.nodes[nid]['orientation'],
-                                        self.nodes[nid]['ipv4'],
-                                        self.nodes[nid]['ipv6'],
-                                        self.nodes[nid]['mac'],
+                                        dumps(self.nodes[nid]['point']),
+                                        dumps(self.nodes[nid]['orientation']),
+                                        self.nodes[nid]['last'],
                                     )
                                 )
                                 for neighbor in self.nodes[nid]['neighbors'].keys():
-                                    cursor.execute('''INSERT INTO %s (%s, %s, %s)
-                                        VALUES (%s, %s, %s)''', (
-                                            # table name
-                                            DB_TABLE_NAMES['neighbor'],
-                                            # column names
-                                            DB_COLUMN_NAMES['robot_id'],
-                                            DB_COLUMN_NAMES['neighbor'],
-                                            DB_COLUMN_NAMES['strength'],
-                                            # values
-                                            self.__nid_map[nid],
-                                            self.__nid_map[neighbor],
-                                            self.nodes[nid]['neighbors'][neighbor],
-                                        ))
+                                    if neighbor in self.__nid_map.keys():
+                                        cursor.execute('''INSERT INTO neighbor (robot_id, neighbor, strength)
+                                            VALUES (%s, %s, %s)''', (
+                                                self.__nid_map[nid],
+                                                self.__nid_map[neighbor],
+                                                self.nodes[nid]['neighbors'][neighbor],
+                                            ))
 
                         self.conn.commit()
+                        return
                 except Error as e: # psycopg2.Error
                     self.get_logger().error('SQL error: %s' % (e,))
                     try:
@@ -180,7 +145,8 @@ class RobotStatusSub(BaseStatusSub):
                     except:
                         self.get_logger().error('Error: Rollback failed')
                 except Exception as e:
-                    self.get_logger().error('DB connection failed: %s' % (e,))
+                    self.get_logger().error('Error: %s' % (e,))
+                    return
             else:
                 tries -= 1
                 sleep(0.2)
@@ -206,7 +172,8 @@ class RobotStatusSub(BaseStatusSub):
                 'ipv4': None,
                 'ipv6': None,
                 'mac': None,
-                'neighbors': {}
+                'neighbors': {},
+                'last': None
             }
         return True
 
@@ -230,14 +197,11 @@ class RobotStatusSub(BaseStatusSub):
                             if self.connect_db():
                                 try:
                                     with self.conn.cursor() as cursor:
-                                        cursor.execute('''UPDATE %s
-                                            SET %s = %s
-                                            WHERE %s = %s
+                                        cursor.execute('''UPDATE robot
+                                            SET activity = %s
+                                            WHERE robot_id = %s
                                             ''', (
-                                                    DB_TABLE_NAMES['robot'],
-                                                    DB_COLUMN_NAMES['activity'],
                                                     self.__state_map[msg.activity],
-                                                    DB_COLUMN_NAMES['robot_id'],
                                                     self.__nid_map[msg.header.nid],
                                                 )
                                             )
@@ -264,6 +228,8 @@ class RobotStatusSub(BaseStatusSub):
                         self.nodes[msg.header.nid]['mac'] = msg.mac
                 case 'NeighborList':
                     for i in range(0, len(msg.neighbors)):
+                        if i == len(msg.indicators):
+                            break
                         # from nodes > get publisher > get neighbors > access i-th neighbor
                         if self.validate_neighbor(msg.neighbors[i]) and self.validate_indicator(msg.indicators[i]):
                             self.nodes[msg.header.nid]['neighbors'][msg.neighbors[i]] = msg.indicators[i]

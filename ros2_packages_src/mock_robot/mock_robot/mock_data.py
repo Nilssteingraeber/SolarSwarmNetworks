@@ -58,7 +58,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         self.activity = 'Working'
         print('Initial activity:', self.activity)
         self.get_logger().debug('Activity set')
-    
+
 
     # service callbacks
     def set_activity_callback(self, request, response): 
