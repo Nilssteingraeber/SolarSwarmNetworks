@@ -90,7 +90,7 @@ class BaseStatusSub(ABC, Node):
             if point['x'] < -180.0 or point['x'] > 180.0:
                 return False
             # y (latitude) should be in range of -90 (south) to 90 (north)
-            elif point['y'] < -90.0 or point['y'] > 90.0:
+            if point['y'] < -90.0 or point['y'] > 90.0:
                 return False
             return True
         except:
@@ -107,16 +107,14 @@ class BaseStatusSub(ABC, Node):
             # square sum should be 1
             if abs(1.0 - sq_sum) > 0.0001: # sq_sum != 1 not practical
                 return False
-            if quat['x'] < -1.0 or quat['x'] > 1.0:
-                return False
             return True
         except:
             return False
 
     def validate_ipv4(self, ip: str):
         try:
-            num_list = ip.split()
-            if len(ip.split('.')) != 4:
+            num_list = ip.split('.')
+            if len(num_list) != 4:
                 return False
             for num in num_list:
                 if int(num) < 0 or int(num) > 255:
@@ -138,10 +136,10 @@ class BaseStatusSub(ABC, Node):
             # only ::, not : at start or beginning
             if ip[0] == ':' and not ip[1] == ':':
                 return False
-            elif ip[-1] == ':' and not ip[-2] == ':':
+            if ip[-1] == ':' and not ip[-2] == ':':
                 return False
             # check segments
-            for num in ip.split(':'):
+            for num in num_list:
                 if len(num) > 4:
                     return False
                 for char in num:
@@ -157,7 +155,7 @@ class BaseStatusSub(ABC, Node):
         try: # only allows : as separator, not -
             if len(mac) != 17:
                 return False
-            for num in mac.split(':'):
+            for num in mac.lower().split(':'):
                 if len(num) != 2:
                     return False
                 for char in num:

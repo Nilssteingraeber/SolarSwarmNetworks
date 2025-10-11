@@ -57,18 +57,19 @@ def test_check_nid(node):
     assert False # missing test
 
 def test_validate_point(node):
-    assert node.validate_point({'x': 90.0, 'y': 180.0, 'z': 0.0}) == True
-    assert node.validate_point({'x': -90.0, 'y': -180.0, 'z': 0.0}) == True
-    assert node.validate_point({'x': 91.0, 'y': 0.0, 'z': 0.0}) == False
-    assert node.validate_point({'x': -91.0, 'y': 0.0, 'z': 0.0}) == False
-    assert node.validate_point({'x': 0.0, 'y': 181.0, 'z': 0.0}) == False
-    assert node.validate_point({'x': 0.0, 'y': -181.0, 'z': 0.0}) == False
+    assert node.validate_point({'x': 180.0, 'y': 90.0, 'z': 0.0}) == True
+    assert node.validate_point({'x': -180.0, 'y': -90.0, 'z': 0.0}) == True
+    assert node.validate_point({'x': 0.0, 'y': 91.0, 'z': 0.0}) == False
+    assert node.validate_point({'x': 0.0, 'y': -91.0, 'z': 0.0}) == False
+    assert node.validate_point({'x': 181.0, 'y': 0.0, 'z': 0.0}) == False
+    assert node.validate_point({'x': -181.0, 'y': 0.0, 'z': 0.0}) == False
 
 def test_validate_quaternion(node):
-    assert node.validate_point({'x': 0.0, 'y': 0.0, 'z': 0.0, 'w': 1.0}) == True
-    assert node.validate_point({'x': 0.0, 'y': 0.0, 'z': 0.0, 'w': 1.000000000001}) == False
-    assert node.validate_point({'x': 1.0, 'y': 1.0, 'z': 1.0, 'w': 1.0}) == False
-    assert node.validate_point({'x': 2.0, 'y': 0.0, 'z': 0.0, 'w': 0.0}) == False
+    assert node.validate_quaternion({'x': 0.0, 'y': 0.0, 'z': 0.0, 'w': 1.0}) == True
+    assert node.validate_quaternion({'x': 0.0, 'y': 0.0, 'z': 0.0, 'w': 1.0001}) == False
+    assert node.validate_quaternion({'x': 0.0, 'y': 0.0, 'z': 0.0, 'w': 1.1}) == False
+    assert node.validate_quaternion({'x': 1.0, 'y': 1.0, 'z': 1.0, 'w': 1.0}) == False
+    assert node.validate_quaternion({'x': 2.0, 'y': 0.0, 'z': 0.0, 'w': 0.0}) == False
 
 def test_validate_ipv4(node):
     assert node.validate_ipv4('127.0.0.1') == True
@@ -80,6 +81,7 @@ def test_validate_ipv4(node):
 def test_validate_ipv6(node):
     assert node.validate_ipv6(':::::::') == True # 7 colons
     assert node.validate_ipv6('::') == True
+    assert node.validate_ipv6('::AA:AA::AA') == True
     assert node.validate_ipv6(':') == False
     assert node.validate_ipv6('::::::::') == False # 8 colons
     assert node.validate_ipv6('::AAAAA') == False # more than 4 chars
@@ -90,7 +92,7 @@ def test_validate_mac(node):
     assert node.validate_mac('00:00:00:00:00:00') == True
     assert node.validate_mac('FF:FF:FF:FF:FF:FF') == True
     assert node.validate_mac('FF:FF:FF:FF:FF') == False
-    assert node.validate_mac('FF:FF:FF:FF:FF:FG') == True
+    assert node.validate_mac('FF:FF:FF:FF:FF:FG') == False
     assert node.validate_mac('') == False
 
 def test_validate_neighbor(node):
