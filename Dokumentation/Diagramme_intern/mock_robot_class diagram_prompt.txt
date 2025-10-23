@@ -12,31 +12,38 @@ package "time_util" {
 
 package "robot_util" {
   abstract class BaseStatusPub {
-  __init__(nid, mac)
-  __nid : int
-  __mac : int
-  __please_override : str
-  __publisher_dict : dict
-  __service_dict : dict
-  __action_dict : dict
-  __allowed_activities : set
-  __activity : str
-  __timer_dict : dict
-  __neighbor_dict : dict
-  
-  @property nid()
-  @property mac()
-  @property publisher_dict()
-  @property service_dict()
-  @property action_dict()
-  @property allowed_activities()
-  @property timer_dict()
-  @property neighbor_dict()
-  @property activity()
-  @activity.setter activity(a : str)
-  {abstract} set_activity_callback(request, response)
-  {abstract} service_info_callback(request, response)
-  {abstract} interface_info_callback(request, response)
+    __please_override : str
+    __nid : int
+    __mac : int
+    __publisher_dict : dict
+    __service_dict : dict
+    __action_dict : dict
+    __allowed_activities : set
+    __activity : str
+    __timer_dict : dict
+    __neighbor_dict : dict
+    
+    __init__(nid, mac)
+    getPublisher(key)
+    getService(key)
+    getAction(key)
+    getTimer(key)
+    createPublisher(key, cls, topic, queue) : bool
+    createService(key, cls, service_name, callback) : bool
+    createAction(key, cls, action_name, callback) : bool
+    createTimer(key, sec, callback) : bool
+    updateAllowedActivities(items) : bool
+    @property nid()
+    @property mac()
+    @property allowed_activities()
+    @property activity()
+    @activity.setter activity(a)
+    @property neighbor_dict()
+    @neighbor_dict.setter neighbor_dict(d)
+    {abstract} set_activity_callback(request, response)
+    {abstract} service_info_callback(request, response)
+    {abstract} interface_info_callback(request, response)
+    addHeader(msg) : bool
   }
 
   class Util {

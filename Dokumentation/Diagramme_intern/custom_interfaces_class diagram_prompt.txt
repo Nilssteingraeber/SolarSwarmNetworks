@@ -11,29 +11,29 @@ package "custom_interfaces.msg" {
   }  
 
   class RobotBattery {
-    nid : str
+    header : Header
     data : float
   }
 
   class RobotCpu {
-    nid : str
+    header : Header
     data : float
   }
 
   class RobotActivity {
-    nid : str
+    header : Header
     activity : str
   }
 
   class RobotPoint {
-    nid : str
+    header : Header
     x : float
     y : float
     z : float
   }
 
   class RobotQuaternion {
-    nid : str
+    header : Header
     x : float
     y : float
     z : float
@@ -41,8 +41,16 @@ package "custom_interfaces.msg" {
   }
 
   class RobotMisc {
-    nid : str
-    data : str
+    header : Header
+    ipv4 : str
+    ipv6 : str
+    mac : str
+  }
+
+  class NeighborList {
+    header : Header
+    neighbors : list
+    indicators : list
   }
 
   Header --> Time
@@ -52,6 +60,7 @@ package "custom_interfaces.msg" {
   RobotPoint --> Header
   RobotQuaternion --> Header
   RobotMisc --> Header
+  NeighborList --> Header
 }
 
 package "custom_interfaces.srv" {
