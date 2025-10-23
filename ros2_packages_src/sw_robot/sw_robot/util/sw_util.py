@@ -84,7 +84,7 @@ class BaseStatusSub(ABC, Node):
         return True
     
     # validator methods
-    def validate_point(self, point):
+    def validate_point(self, point) -> bool:
         try:
             # x (longitude) should be in range of -180 (west) to 180 (east)
             if point['x'] < -180.0 or point['x'] > 180.0:
@@ -96,7 +96,7 @@ class BaseStatusSub(ABC, Node):
         except:
             return False
 
-    def validate_quaternion(self, quat):
+    def validate_quaternion(self, quat) -> bool:
         try:
             sq_sum = 0.0
             # x, y, z, and w should be in range of -1 to 1
@@ -111,7 +111,7 @@ class BaseStatusSub(ABC, Node):
         except:
             return False
 
-    def validate_ipv4(self, ip: str):
+    def validate_ipv4(self, ip: str) -> bool:
         try:
             num_list = ip.split('.')
             if len(num_list) != 4:
@@ -124,7 +124,7 @@ class BaseStatusSub(ABC, Node):
             self.get_logger().error('Invalid ipv4')
             return False
 
-    def validate_ipv6(self, ip: str):
+    def validate_ipv6(self, ip: str) -> bool:
         try:
             col_cnt = ip.count(':')
             if col_cnt < 2 or col_cnt > 7:
@@ -151,7 +151,7 @@ class BaseStatusSub(ABC, Node):
             self.get_logger().error('Invalid ipv6')
             return False
 
-    def validate_mac(self, mac: str):
+    def validate_mac(self, mac: str) -> bool:
         try: # only allows : as separator, not -
             if len(mac) != 17:
                 return False
@@ -167,12 +167,16 @@ class BaseStatusSub(ABC, Node):
             return False
         
     # override for additional checks
-    def validate_neighbor(self, neighbor: str):
+    def validate_neighbor(self, neighbor: str) -> bool:
+        if type(neighbor).__name__ != 'str':
+            return False
         return self.validate_mac(neighbor)
 
-    def validate_indicator(self, indicator: float):
+    def validate_indicator(self, indicator: float) -> bool:
         # possible range 0 to ~120 dBm
         # typical range -30 to -80 dBm
+        if type(indicator).__name__ not in ('float', 'int'):
+            return False
         return indicator <= 0.0 and indicator >= -130.0
     
 
