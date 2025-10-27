@@ -4,7 +4,7 @@ Um später zu zeigen, dass unser Netzwerk funktioniert, wollen wir mehrere Knote
 Referenz: https://docs.docker.com/engine/swarm/key-concepts/
 
 ## Docker init und join
-Ein Schwarm wird mit `docker swarm init` gestartet. `init` gibt eine Bezeichnung des erstellten Knoten und zwei Join-Tokens aus. Diese Tokens werden anschließend benötigt, um weitere Worker oder Manager hinzuzufügen. Mit `docker swarm leave` kann der Schwarm verlassen werden, wobei der letzte Knoten `--force` verwenden muss, da der Docker Daemon es sonst verhindert. Die offizielle Docker Dokumentation bietet eine Übersicht der Optionen, sowie ihrer Standardwerte. Hier ist eine Auswahl von Optionen, die für uns zum Testen relevant sein könnten:
+Ein Schwarm wird mit `docker swarm init` gestartet. `init` gibt eine Bezeichnung des erstellten Knoten und zwei Join-Tokens aus. Diese Tokens werden anschließend benötigt, um weitere Worker oder Manager hinzuzufügen. Mit `docker swarm leave` kann der Schwarm verlassen werden, wobei der letzte Knoten `--force` oder `-f` verwenden muss, da der Docker Daemon es sonst verhindert. Die offizielle Docker Dokumentation bietet eine Übersicht der Optionen, sowie ihrer Standardwerte. Hier ist eine Auswahl von Optionen, die für uns zum Testen relevant sein könnten:
 - `--listen-addr <IP-Adresse[:Port]>` spezifiziert eine IP-Adresse (und Port), auf der Worker Nachrichten von Managern lauschen. Statt einer IP-Adresse kann ein Netzwerkinterface angegeben werden.
 - `--advertise-addr <IP-Adresse[:Port]>` spezifiziert eine IP-Adresse (und Port), mit der Manager werben. Statt einer IP-Adresse kann ein Netzwerk Interface angegeben werden.
 - `--max-snapshots <Anzahl>` ist standardmäßig 0. `Anzahl` gibt an, wie viele alte Raft snapshots behalten werden. Sie halten den Zustand eines Clusters hält und sind zum Debuggen oder Wiederherstellen eines Clusters nützlich.
@@ -23,7 +23,7 @@ Manche Optionen von `docker init` können ebenfalls für `docker join` verwendet
 Referenz: https://docs.docker.com/reference/cli/docker/swarm/join/
 
 ## Docker services
-Services sind praktisch eine Gruppe von Containern, die in einem Schwarm gestartet und von ihm verwaltet werden. Um mit Services arbeiten zu können, muss ein Knoten im Swarm Modus sein. Ein Service kann in seiner einfachsten Form mit `docker service create <Image>` erstellt werden, wonach seine ID ausgegeben wird. Mit `docker service ls` können aktive Services angezeigt, mit `docker service remove <Service>` entfernt und mit `docker service update <Optionen> <Service>` seine Parameter aktualisiert werden. Die offizielle Dokumentation zu `service create` führt eine Vielzahl an Optionen auf. Einige wie `--network` gleichen oder ähneln den von `docker run`. Hier ist eine Auswahl von Optionen, die für uns zum Testen relevant sein könnten:
+Services sind praktisch eine Gruppe von Containern, die in einem Schwarm gestartet und von ihm verwaltet werden. Um mit Services arbeiten zu können, muss ein Knoten im Swarm Modus sein. Ein Service kann in seiner einfachsten Form mit `docker service create <Image>` erstellt werden, wonach seine ID ausgegeben wird. Mit `docker service ls` können aktive Services angezeigt, mit `docker service remove <Service>` entfernt und mit `docker service update <Optionen> <Service>` seine Parameter aktualisiert werden. Die offizielle Dokumentation zu `service create` führt relevante Optionen auf. Einige wie `--network` gleichen oder ähneln den von `docker run`. Hier ist eine Auswahl von Optionen, die für uns zum Testen relevant sein könnten:
 - `--name <Name>` gibt einem Service einen Namen, der in `service ls` sichtbar ist.
 - `--replicas <Anzahl>` ist standardmäßig 1. Bei größeren Zahlen versucht ein Schwarm stets, die angegebene Anzahl an Repikas zu erhalten. `service ls` zeigt an, wie viele davon laufen, bspw. `1/1`, `5/5` oder `4/5`, falls eins ausgefallen ist.
 - `--replicas-max-per-node <Anzahl>` ist standardmäßig 0 (unbegrenzt). Gibt die maximale `Anzahl` an Replikas des Services pro Knoten an.
@@ -93,12 +93,45 @@ Dritter Test:
 - In `docker service ls` sollten 2/3 aktiv sein
 - Erste Manager versucht, mit seinem eigenen Token wieder beizutreten
 
-# Test mit ROS2 Service (nicht definiert, nicht durchgeführt)
 
-Zwischenablage
-    "Because manager nodes are meant to be a stable component of the infrastructure, you should use a fixed IP address for the advertise address to prevent the swarm from becoming unstable on machine reboot.
+# Docker Swarm Strategie
+Für den Gebrauch von Docker Swarm brauchen wir eine Strategie, um allen Robotern den Beitritt zu ermöglichen und den Schwarm erweiterbar zu machen. Der Schwarm wird von einem Roboter gestartet, welcher dann als Leader bezeichnet wird. Durch `docker swarm init` werden Beitritts-Tokens generiert, mit denen weitere Roboter beitreten können. Eine Herausforderung besteht darin, diese Tokens allen Robotern verfügbar zu machen und vor dem Beitritt zu entscheiden, ob ein Roboter Worker oder Manager werden soll. Obwohl es möglich ist, alle Roboter als Manager zu integrieren, warnt der offizielle Guide zum Administrieren und Warten von Docker Swarms vor möglichen Leistungsengpässen. In einem kleinen, nicht-kritischen Schwarm sei das Risiko gering, wenn Ressourcen zum Administrieren begrenzt werden.
 
-    If the whole swarm restarts and every manager node subsequently gets a new IP address, there is no way for any node to contact an existing manager. Therefore the swarm is hung while nodes try to contact one another at their old IP addresses.
+Referenz: https://docs.docker.com/engine/swarm/admin_guide/#run-manager-only-nodes
 
-    Dynamic IP addresses are OK for worker nodes."
-Offizieller Guide zum Administrieren und Warten eines Docker Swarms: https://docs.docker.com/engine/swarm/admin_guide/
+Sind keine Manager vorhanden, arbeiten laut Guide Worker weiter, können jedoch nicht mehr administriert werden. Folglich können Services nicht hinzugefügt, bearbeitet oder entfernt werden. Es sollten daher genug Manager möglichst verteilt existieren, sodass auch beim Spalten des Schwarms Manager erreicht werden können.
+
+Referenz: https://docs.docker.com/engine/swarm/admin_guide/#recover-from-losing-the-quorum
+
+## Verteilung der Join-Tokens
+Initiiert und verlässt ein Roboter mehrmals einen Schwarm mit `sudo docker swarm init` und `sudo docker swarm leave -f`, wird jedes Mal ein anderes Join-Token generiert. Daher muss beim Start des Schwarms ein Roboter die Verantwortung dafür übernehmen, den Schwarm zu initiieren und die Token mit anderen Robotern auszutauschen. Da sich voraussichtlich in der Praxis alle Roboter beim Systemstart räumlich nahe sind, betrachten wir folgende Möglichkeiten, um die Tokens auszutauschen.
+
+### SSH/SCP
+Alle Roboter bekommen einen einfachen Namen wie "Anton", "Ida", oder "Otto" und eine statische IPv4-Adresse vergeben. Nach dem Setup von Batman-adv wird durch avahi-autoipd dynamisch eine IPv4-Adresse vergeben. Die statische Adresse ist notwendig, um zuverlässige Hosts für SSH anzugeben.
+Auf allen Robotern wird SSH eingerichtet: Lokal auf jedem Roboter wird ein Schlüsselpaar bestehend aus öffentlichem und privatem Schlüssel in `~/.ssh/` generiert. Diese Paare sind gebunden an den lokalen Nutzer und müssen manuell auf jedem Roboter generiert werden, da nicht gewährleistet ist, dass alle Nutzer und Gerätenamen identisch oder bekannt sind. Die öffentlichen Schlüssel werden mit Namen und Adressen gesammelt, um zentral ein eine Konfigurations-Datei mit allen Hosts anzulegen. Diese wird anschlließend inklusive öffentlicher Schlüssel aller bekannten Hosts auf alle Roboter in `~/.ssh/` kopiert.
+Der Leader des Schwarms hinterlegt generierte Tokens im Verzeichnis `~/swarm_tokens/` und kopiert sie über SCP ins selbe Verzeichnis auf allen erreichbaren Hosts. Der Service, der diese Aufgabe übernimmt, kann optional Logik erhalten und bestimmen, ob das Worker- oder Manager-Token kopiert wird.
+
+Vorteilhaft an dieser Methode ist, dass SSH eingerichtet wird und später weiterverwendet werden kann. Dazu sind SSH und SCP sicher und können für spätere Projekte mit Sicherheitsanforderungen verwendet werden. Optional können Roboter, die nicht Leader sind, die Tokens weiter teilen. Zur Verwendung von statischen IP-Adressen rät auch Docker. Diese seien als `--advertise-addr` zuverlässiger und sicherer:
+> "Because manager nodes are meant to be a stable component of the infrastructure, you should use a fixed IP address for the advertise address to prevent the swarm from becoming unstable on machine reboot.
+> 
+> If the whole swarm restarts and every manager node subsequently gets a new IP address, there is no way for any node to contact an existing manager. Therefore the swarm is hung while nodes try to contact one another at their old IP addresses.
+> 
+> Dynamic IP addresses are OK for worker nodes."
+
+Nachteilhaft ist die Komplexität der Methode. Es müssen beim Systemstart alle Roboter erreichbar sein und über statische IPv4-Adressen verfügen. Es ist anfangs nicht möglich, über eine GUI die Erreichbarkeit der Roboter zu prüfen, da es ohne Schwarm noch keine Docker Swarm Services gibt. Für einen autonomen Start ist nicht klar, woher ein Roboter wissen soll, ob er auf Tokens warten oder Leader werden soll. Auch kann ein Roboter momentan nicht unterscheiden, ob er vor einem Einsatz gestartet wird oder während des EInsatzes neugestartet wurde. Es sind diesbezüglich weitere Überlegungen nötig. Zuletzt wird es mit zunehmender Anzahl an Robotern immer aufwendiger, neue Roboter zu integrieren, da die Hosts aller Roboter aktualisiert werden müssen. SCP kann Dateien überschreiben, jedoch erfordert es Root-Rechte, um `~/.ssh/config` zu bearbeiten (mit SCP nicht getestet). Weiterhin müssen alle Roboter erreichbar sein, um von der Änderung zu erfahren. Ansonsten müssen über Services regelmäßig Updates geteilt und auf der Zielmaschine mit dem eigenen Stand verglichen werden. Möglicherweise gelingt es, mit SCP eine temporäre Datei anzulegen, welche durch den Service auf der Zielmaschine die veraltete `~/.ssh/config` überschreibt.
+
+### HTTP-Server
+Ein Roboter oder PC im Netzwerk mit einer statischen IPv4-Adresse betreibt einen einfachen HTTP-Server, welcher Token-Dateien ausliefert. Der Host ist entweder immer der Leader und liefert seine eigenen Tokens aus oder kann Tokens von einem Leader erhalten. Über einen Service rufen die Roboter mit `curl` die Tokens ab.
+
+Diesse Methode ist einfacher umzusetzen als SSH, da nur der Host des Servers konfiguriert werden muss. Es wird jedoch wieder eine statische IP-Adresse benötigt und neue Roboter müssen im selben Netzwerk sein wie der Server.
+
+### USB-Stick
+Roboter werden nacheinander mit einem beliebigen USB-Stick gestartet. Nach Systemstart prüft ein Service, ob auf dem USB-Stick ein Verzeichnis `swarm_tokens/` mit Dateien für die Tokens vorhanden sind. Falls nicht, wird der Roboter zum Leader und legt die von ihm generierten Tokens in dem Verzeichnis ab. Eine zusätzliche Datei könnte mit zwei Zahlen festhalten, wie viele Manager maximal im Netz sein sollen und wie oft das Manager-Token verwendet haben. Falls diese Dateien vorhanden sind, tritt der Roboter dem Schwarm mit dem Worker- oder Manager-Token bei und inkrementiert die eine Zahl in der zusätzlichen Datei.
+
+Diese Methode ist erheblich leichter umzusetzen, da sie nur einen einfachen Service benötigt. Der USB-Stick kann beliebig oft verwendet werden, da keine Roboter-abhängigen Informationen wie Nutzername, IP-Adresse oder MAC-Adresse benötigt werden. Auch wird keine Erreichbarkeit zu einem besonderen Roboter vorausgesetzt. Wenn der Schwarm heruntergefahren wird, können die Dateien auf dem USB-Stick gelöscht werden, um beim nächsten Start einen neuen Leader zu ernennen und neue Tokens zu generieren.
+
+## Replikation von Docker Swarm Services
+In einem Docker Swarm werden Services explizit von einem Manager mit `docker service create` erstellt. Wie zuvor beschrieben, wird ein zu erreichender Zustand für den Schwarm definiert. Durch `create` versucht der Schwarm, die angegebene Anzahl an Replikas unter berücksichtigung von `--replicas` und `--replicas-max-per-node` einzuhalten. Docker Swarm berücksichtigt nicht, wie leistungsfähig einzelne Hosts sind. Mit `--constraints` Wir definieren daher Labels
+
+https://docs.docker.com/reference/cli/docker/service/create/#label
+
