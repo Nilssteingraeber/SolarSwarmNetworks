@@ -1,0 +1,13 @@
+[Unit]
+Description=Add labels to dockerd and become leader or request join tokens to join docker swarm as worker
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=2
+ExecStart=/usr/local/bin/docker_init.bash
+
+[Install]
+WantedBy=multi-user.target

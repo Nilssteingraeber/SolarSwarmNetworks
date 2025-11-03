@@ -1,0 +1,11 @@
+[Unit]
+Description=Copy files from solarswarm_setup/rx/
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rx_copy.bash
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

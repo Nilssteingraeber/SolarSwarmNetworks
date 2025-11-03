@@ -1,0 +1,13 @@
+[Unit]
+Description=Start batman-adv setup
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5
+ExecStart=/usr/local/bin/batman_adv_setup.bash
+
+[Install]
+WantedBy=multi-user.target

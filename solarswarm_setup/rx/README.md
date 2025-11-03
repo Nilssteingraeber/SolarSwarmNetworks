@@ -1,0 +1,3 @@
+`rx/` ist als Zielf für scp gedacht. Der Service **rx_copy** nutzt dieses Verzeichnis, um für SSH benötigte Dateien wie `config` oder öffentliche Schlüssel auszutauschen. Das vom Service verwendete Skript `rx_copy.bash` kann angepasst werden, um andere erhaltene Dateien zu verarbeiten.
+
+`rx/ssh/` beispielsweise erhält `config`, `names`, `names_with_ip` und öffentliche SSH-Schlüssel. Wenn **rx_copy** Dateien in `rx/ssh/` findet, werden diese nach `ssh_identities/` verschoben und `config` mit den SSH-Schlüsseln anschließend nach `~/.ssh/` kopiert, falls `COPY_TO_SSH` auf "true" gesetzt wurde.

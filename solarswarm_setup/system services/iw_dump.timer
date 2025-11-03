@@ -1,0 +1,11 @@
+[Unit]
+Description=Run iw_dump.bash every 3 seconds
+
+[Timer]
+OnBootSec=10
+OnUnitActiveSec=3s
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

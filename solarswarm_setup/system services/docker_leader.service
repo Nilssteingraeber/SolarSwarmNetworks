@@ -1,0 +1,11 @@
+[Unit]
+Description=Monitor manager count in a docker swarm and promote/demote to maintain desired count
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5
+ExecStart=/usr/local/bin/docker_leader.bash
+
+[Install]
+WantedBy=multi-user.target

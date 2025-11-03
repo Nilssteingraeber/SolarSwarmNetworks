@@ -1,0 +1,11 @@
+[Unit]
+Description=Collect iw station dump output
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/iw_dump.bash
+
+[Install]
+WantedBy=multi-user.target

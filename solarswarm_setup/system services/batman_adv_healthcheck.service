@@ -1,0 +1,11 @@
+[Unit]
+Description=Restart batman_adv_setup.service if no neighbors are found for an extended time
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5
+ExecStart=/usr/local/bin/batman_adv_healthcheck.bash
+
+[Install]
+WantedBy=multi-user.target
