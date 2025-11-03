@@ -71,17 +71,11 @@ send_to_hosts() { # copy files to all available ssh hosts
         exit 1
     fi
 
-    name_count=$(wc -l < ssh_identities/names) # get number of hosts
-    # note: check for correct line breaks in names and names_with_ip using `cat -A <file>`
-    # at the end of any line (including the last) should be a '$'
-    # the lists were read as one line when typed on Windows and had to be replaced before
-    i=1
-    while [ $i -le $name_count ]; do
-        host=$(head -$i ssh_identities/names | tail -1) # cut single host name
-        host_ip=$(grep "$host" ssh_identities/names_with_ip | grep -oE "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
-        # -o 
-        echo "Connecting to $host $host_ip..."
-        if [ ping -c 1 $host_ip ]; then
+    for i in $(cat ssh_identities/names_with_ip); do
+        read host ip <<< $i
+        if [ $host == $MESH_IDENTITY ]; then continue; fi # skip self
+        echo "Connecting to $host $ip..."
+        if ping -c 1 $ip; then
             echo "Reached $host"
             if [ $1 == "keys" ]; then # copy public keys
                 sudo scp -o ConnectTimeout=$SSH_TIMEOUT ssh_identities/keys/*.pub $host:$SW_SETUPssh_identities/rx/ssh/
@@ -94,7 +88,6 @@ send_to_hosts() { # copy files to all available ssh hosts
         else
             echo "Failed to reach $host"
         fi
-        ((i++))
     done
 }
 
@@ -113,48 +106,48 @@ fi
 if [ $1 == "status" ]; then
     if ping -W 1 -c 1 google.com; then internet=yes; else internet=no; fi
     echo """
-You are logged in as: $(whoami)
-Connection to internet: $internet
-Docker Swarm Leader: 
-Current environment variables:
-    WLANDEV=$WLANDEV
-    MESH_IDENTITY=$MESH_IDENTITY
-    MESH_IP=$MESH_IP
-Active services: (active | inactive (unknown are also "inactive"))
-    batman_adv_healthcheck   $(sudo systemctl is-active batman_adv_healthcheck.service)
-    batman_adv_setup         $(sudo systemctl is-active batman_adv_setup.service)
-    docker_leader            $(sudo systemctl is-active docker_leader.service)
-    docker_init              $(sudo systemctl is-active docker_init.service)
-    iw_dump (timer)          $(sudo systemctl is-active iw_dump.timer)
-    rx_copy                  $(sudo systemctl is-active rx_copy.service)
-Enabled services: (enabled | disabled | not-found)
-    batman_adv_healthcheck   $(sudo systemctl is-enabled batman_adv_healthcheck.service)
-    batman_adv_setup         $(sudo systemctl is-enabled batman_adv_setup.service)
-    docker_leader            $(sudo systemctl is-enabled docker_leader.service)
-    docker_init              $(sudo systemctl is-enabled docker_init.service)
-    iw_dump (timer)          $(sudo systemctl is-enabled iw_dump.timer)
-    rx_copy                  $(sudo systemctl is-enabled rx_copy.service)
-Files:
-    ~/.ssh/                  $(if [ -d ~/.ssh/ ]; then echo exists; fi)
-    ~/.ssh/config            $(if [ -d ~/.ssh/ ] && [ -f ~/.ssh/config ]; then echo exists; fi)
-    ~/.ssh/MESH_IDENTITY     $(if [ -d ~/.ssh/ ] && [ -f ~/.ssh/$MESH_IDENTITY ]; then echo exists; fi)
-    /tmp/iw_dump/            $(if [ -d /tmp/iw_dump/ ]; then echo exists; fi)
-    /tmp/iw_dump/iw_dump.txt $(if [ -d /tmp/iw_dump/ ] && [ -f /tmp/iw_dump/iw_dump.txt ]; then echo exists; fi)
-Services: (.service and .timer files in /etc/systemd/system/)
-    batman_adv_healthcheck   $(if [ -f /etc/systemd/system/batman_adv_healthcheck.service ]; then echo exists; fi)
-    batman_adv_setup         $(if [ -f /etc/systemd/system/batman_adv_setup.service ]; then echo exists; fi)
-    docker_leader            $(if [ -f /etc/systemd/system/docker_leader.service ]; then echo exists; fi)
-    docker_init              $(if [ -f /etc/systemd/system/docker_init.service ]; then echo exists; fi)
-    iw_dump (timer)          $(if [ -f /etc/systemd/system/iw_dump.timer ]; then echo exists; fi)
-    rx_copy                  $(if [ -f /etc/systemd/system/rx_copy.service ]; then echo exists; fi)
-Services: (.bash scripts in /usr/local/bin)
-    batman_adv_healthcheck   $(if [ -f /usr/local/bin/batman_adv_healthcheck.bash ]; then echo exists; fi)
-    batman_adv_setup         $(if [ -f /usr/local/bin/batman_adv_setup.bash ]; then echo exists; fi)
-    docker_leader            $(if [ -f /usr/local/bin/docker_leader.bash ]; then echo exists; fi)
-    docker_init              $(if [ -f /usr/local/bin/docker_init.bash ]; then echo exists; fi)
-    iw_dump (timer)          $(if [ -f /usr/local/bin/iw_dump.bash ]; then echo exists; fi)
-    rx_copy                  $(if [ -f /usr/local/bin/rx_copy.bash ]; then echo exists; fi)
-"""
+    You are logged in as: $(whoami)
+    Connection to internet: $internet
+    Docker Swarm Leader: 
+    Current environment variables:
+        WLANDEV=$WLANDEV
+        MESH_IDENTITY=$MESH_IDENTITY
+        MESH_IP=$MESH_IP
+    Active services: (active | inactive (unknown are also "inactive"))
+        batman_adv_healthcheck   $(sudo systemctl is-active batman_adv_healthcheck.service)
+        batman_adv_setup         $(sudo systemctl is-active batman_adv_setup.service)
+        docker_leader            $(sudo systemctl is-active docker_leader.service)
+        docker_init              $(sudo systemctl is-active docker_init.service)
+        iw_dump (timer)          $(sudo systemctl is-active iw_dump.timer)
+        rx_copy                  $(sudo systemctl is-active rx_copy.service)
+    Enabled services: (enabled | disabled | not-found)
+        batman_adv_healthcheck   $(sudo systemctl is-enabled batman_adv_healthcheck.service)
+        batman_adv_setup         $(sudo systemctl is-enabled batman_adv_setup.service)
+        docker_leader            $(sudo systemctl is-enabled docker_leader.service)
+        docker_init              $(sudo systemctl is-enabled docker_init.service)
+        iw_dump (timer)          $(sudo systemctl is-enabled iw_dump.timer)
+        rx_copy                  $(sudo systemctl is-enabled rx_copy.service)
+    Files:
+        ~/.ssh/                  $(if [ -d ~/.ssh/ ]; then echo exists; fi)
+        ~/.ssh/config            $(if [ -d ~/.ssh/ ] && [ -f ~/.ssh/config ]; then echo exists; fi)
+        ~/.ssh/MESH_IDENTITY     $(if [ -d ~/.ssh/ ] && [ -f ~/.ssh/$MESH_IDENTITY ]; then echo exists; fi)
+        /tmp/iw_dump/            $(if [ -d /tmp/iw_dump/ ]; then echo exists; fi)
+        /tmp/iw_dump/iw_dump.txt $(if [ -d /tmp/iw_dump/ ] && [ -f /tmp/iw_dump/iw_dump.txt ]; then echo exists; fi)
+    Services: (.service and .timer files in /etc/systemd/system/)
+        batman_adv_healthcheck   $(if [ -f /etc/systemd/system/batman_adv_healthcheck.service ]; then echo exists; fi)
+        batman_adv_setup         $(if [ -f /etc/systemd/system/batman_adv_setup.service ]; then echo exists; fi)
+        docker_leader            $(if [ -f /etc/systemd/system/docker_leader.service ]; then echo exists; fi)
+        docker_init              $(if [ -f /etc/systemd/system/docker_init.service ]; then echo exists; fi)
+        iw_dump (timer)          $(if [ -f /etc/systemd/system/iw_dump.timer ]; then echo exists; fi)
+        rx_copy                  $(if [ -f /etc/systemd/system/rx_copy.service ]; then echo exists; fi)
+    Services: (.bash scripts in /usr/local/bin)
+        batman_adv_healthcheck   $(if [ -f /usr/local/bin/batman_adv_healthcheck.bash ]; then echo exists; fi)
+        batman_adv_setup         $(if [ -f /usr/local/bin/batman_adv_setup.bash ]; then echo exists; fi)
+        docker_leader            $(if [ -f /usr/local/bin/docker_leader.bash ]; then echo exists; fi)
+        docker_init              $(if [ -f /usr/local/bin/docker_init.bash ]; then echo exists; fi)
+        iw_dump (timer)          $(if [ -f /usr/local/bin/iw_dump.bash ]; then echo exists; fi)
+        rx_copy                  $(if [ -f /usr/local/bin/rx_copy.bash ]; then echo exists; fi)
+    """
 elif [ $1 == "wlandev" ]; then
     if [ -z $2 ]; then
         echo "Input your wireless interface (leave empty to use wlp0s20f3) "
