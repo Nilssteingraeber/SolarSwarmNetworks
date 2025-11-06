@@ -131,7 +131,22 @@ Roboter werden nacheinander mit einem beliebigen USB-Stick gestartet. Nach Syste
 Diese Methode ist erheblich leichter umzusetzen, da sie nur einen einfachen Service benötigt. Der USB-Stick kann beliebig oft verwendet werden, da keine Roboter-abhängigen Informationen wie Nutzername, IP-Adresse oder MAC-Adresse benötigt werden. Auch wird keine Erreichbarkeit zu einem besonderen Roboter vorausgesetzt. Wenn der Schwarm heruntergefahren wird, können die Dateien auf dem USB-Stick gelöscht werden, um beim nächsten Start einen neuen Leader zu ernennen und neue Tokens zu generieren.
 
 ## Replikation von Docker Swarm Services
-In einem Docker Swarm werden Services explizit von einem Manager mit `docker service create` erstellt. Wie zuvor beschrieben, wird ein zu erreichender Zustand für den Schwarm definiert. Durch `create` versucht der Schwarm, die angegebene Anzahl an Replikas unter berücksichtigung von `--replicas` und `--replicas-max-per-node` einzuhalten. Docker Swarm berücksichtigt nicht, wie leistungsfähig einzelne Hosts sind. Mit `--constraints` Wir definieren daher Labels
+In einem Docker Swarm werden Services explizit von einem Manager mit `docker service create` erstellt. Wie zuvor beschrieben, wird ein zu erreichender Zustand für den Schwarm definiert. Durch `create` versucht der Schwarm, die angegebene Anzahl an Replikas unter berücksichtigung von `--replicas` und `--replicas-max-per-node` einzuhalten. Docker Swarm berücksichtigt nicht, wie leistungsfähig einzelne Hosts sind. Wir verwenden daher Labels, welche beim Erstellen eines Services Constraints angegeben werden können. Eine Liste von verwendeten Labels:
+
+CAN_BECOME_MANAGER=true
+CAN_BECOME_LEADER=false
+CPU_ARCHITECTURE=x86_64 # oder ARM64, System z, PowerPC64, RISC-V, x86
+    uname --help
+    lscpu --help
+    ^ mit service_helper.bash anlegen
+CPU_COUNT=8 # oder 4, 2, ...
+    nproc
+    lscpu
+RAM_GE16=false # grob greater equal 16 GB, true oder false
+RAM_GE8=true
+RAM_GE4=true
+HAS_2D_MAP_DATA=false # oder true
+HAS_3D_MAP_DATA=false
+HAS_DB_DATA=false
 
 https://docs.docker.com/reference/cli/docker/service/create/#label
-

@@ -2,7 +2,7 @@
 # v0.9.2
 SSH_TIMEOUT=1 # change if too short (was sufficient to connect to github.com in a connection test)
 
-SW_SETUP=~/solarswarm_setup/
+SW_SETUP=~/solarswarm_setup
 cd $SW_SETUP # requires parent directory 'solarswarm_setup' to be placed in '~'
 
 source /etc/environment
@@ -25,18 +25,21 @@ if [ -z $1 ]; then
     	    enable timer, and restart all services
     	cleanup
             remove services and files (except ssh keys and hosts)
-    	restart [batman_adv_setup | batman_adv_healthcheck | iw_dump]
+    	restart [valid service]
             restart all or a specific service (or timer)
-    	stop [batman_adv_setup | batman_adv_healthcheck | iw_dump]
+    	stop [valid service]
             stop all or a specific service (or timer)
-    	enable [batman_adv_setup | batman_adv_healthcheck | iw_dump]
+    	enable [valid service]
             enable all or a specific service (or timer)
-    	disable [batman_adv_setup | batman_adv_healthcheck | iw_dump]
+    	disable [valid service]
             disable all or a specific service (or timer)
         managed
             return from ad-hoc to managed mode (required for internet
             access)
     Notes:
+        - 'All' services excludes docker_leader as that service should
+          generally be startet by the docker_init service if a file
+          'leader' with the host's name in it is inside 'docker/'.
         - The name provided for ssh must be in the files 'names' and
           match with a name and ip in 'names_with_ip' and config.
           Ensure that no two maschines use the same name or ip.
@@ -56,7 +59,11 @@ echo_valid_service() { # to avoid redundancy
     echo """Unknown service name. Use any of:
     batman_adv_setup
     batman_adv_healthcheck
-    iw_dump"""
+    iw_dump
+    docker_leader (special, should not be started/enabled manually)
+    docker_init
+    rx_copy
+    """
 }
 
 send_to_hosts() { # copy files to all available ssh hosts
@@ -70,7 +77,8 @@ send_to_hosts() { # copy files to all available ssh hosts
         echo "Error: MESH_IDENTITY has not been set"
         exit 1
     fi
-
+    
+    sudo hostname $MESH_IDENTITY
     for i in $(cat ssh_identities/names_with_ip); do
         read host ip <<< $i
         if [ $host == $MESH_IDENTITY ]; then continue; fi # skip self
@@ -78,12 +86,12 @@ send_to_hosts() { # copy files to all available ssh hosts
         if ping -c 1 $ip; then
             echo "Reached $host"
             if [ $1 == "keys" ]; then # copy public keys
-                sudo scp -o ConnectTimeout=$SSH_TIMEOUT ssh_identities/keys/*.pub $host:$SW_SETUPssh_identities/rx/ssh/
+                sudo scp -o ConnectTimeout=$SSH_TIMEOUT ssh_identities/keys/*.pub $host:$SW_SETUP/ssh_identities/rx/ssh/
                 # host must have rx_copy.service active to copy it to their .ssh directory
             elif [ $1 == "hosts" ]; then # copy names, names_with_ip, and config to all reachable hosts
-                sudo scp -o ConnectTimeout=$SSH_TIMEOUT ssh_identities/names $host:$SW_SETUPssh_identities/rx/ssh/
-                sudo scp -o ConnectTimeout=$SSH_TIMEOUT ssh_identities/names_with_ip $host:$SW_SETUPssh_identities/rx/ssh/
-                sudo scp -o ConnectTimeout=$SSH_TIMEOUT ssh_identities/config $host:$SW_SETUPssh_identities/rx/ssh/
+                sudo scp -o ConnectTimeout=$SSH_TIMEOUT ssh_identities/names $host:$SW_SETUP/ssh_identities/rx/ssh/
+                sudo scp -o ConnectTimeout=$SSH_TIMEOUT ssh_identities/names_with_ip $host:$SW_SETUP/ssh_identities/rx/ssh/
+                sudo scp -o ConnectTimeout=$SSH_TIMEOUT ssh_identities/config $host:$SW_SETUP/ssh_identities/rx/ssh/
             fi
         else
             echo "Failed to reach $host"
@@ -107,6 +115,7 @@ if [ $1 == "status" ]; then
     if ping -W 1 -c 1 google.com; then internet=yes; else internet=no; fi
     echo """
     You are logged in as: $(whoami)
+    Hostname: $(hostname)
     Connection to internet: $internet
     Docker Swarm Leader: 
     Current environment variables:
@@ -168,7 +177,7 @@ elif [ $1 == "wlandev" ]; then
     echo "Exported WLANDEV=$wlandev"
     source /etc/environment
 elif [ $1 == "send" ]; then
-    if [ $2 == "keys"]; then
+    if [ $2 == "keys" ]; then
         send_to_hosts keys
     elif [ $2 == "hosts" ]; then
         send_to_hosts hosts
@@ -197,21 +206,23 @@ elif [ $1 == "ssh" ]; then
         echo "Error: Name not in 'names'"
         exit 1
     else
-        if sudo ls ~/.ssh/ | grep -Fq "$name"; then # check if private key with name exists
+        if [ -f ssh_identities/$name ]; then # check if private key with name exists
             echo "Error: Private key already exists for this name"
             echo "Delete? y/N"
             read delete
             if [ $delete == "y" ]; then # delete existing key pair
-                rm ssh_identities/$name
-                rm ssh_identities/keys/$name.pub
-                sudo rm ~/.ssh/$name
-                sudo rm ~/.ssh/$name.pub
+                sudo rm ~/.ssh/$name &>/dev/null
+                sudo rm ~/.ssh/$name.pub &>/dev/null
+                sudo rm ssh_identities/$name &>/dev/null
+                sudo rm ssh_identities/keys/$name.pub &>/dev/null
                 echo "Deleted existing keys to given name"
             else
                 generate=false
             fi
-        elif sudo ls ~/.ssh/ | grep -F "$name.pub"; then # check if public key with name exists
+        elif [ -f ssh_identities/keys/$name.pub ]; then # check if public key with name exists
             echo "Error: Public key already exists for this name (likely already in use)"
+            echo "Check if this name is in use before deleting 'ssh_identities/keys/$name.pub'" 
+            echo "manually and trying again"
             exit 1
         fi
     fi
@@ -222,43 +233,65 @@ elif [ $1 == "ssh" ]; then
         echo "Error: Found no valid ip address in 'names_with_ip'"
         exit 1
     else
-
         sudo sed -i "/MESH_IP=/d" /etc/environment # remove previous MESH_IP, if set
         echo "MESH_IP=\"$mesh_ip\"" | sudo tee -a /etc/environment > /dev/null # append new
         echo "Exported MESH_IP=\"$mesh_ip\""
-
+	
+	sudo hostname $name
         sudo sed -i "/MESH_IDENTITY=/d" /etc/environment # remove previous MESH_IP, if set
         echo "MESH_IDENTITY=\"$name\"" | sudo tee -a /etc/environment > /dev/null # append new
         echo "Exported MESH_IDENTITY=\"$name\""
         source /etc/environment # load envs
 
-        if [ generate == true ]; then
+        if [ $generate == true ]; then
+            # sudo ssh-keygen -R $name
+            # -R to remove old keys with name (needed to generate new keys without sudo rights)
             # use local repostories of keys in case scp (used in send option) can not overwrite
-            sudo ssh-keygen -R -f ssh_identities/$name -N "" # generate pair of keys
-            # -R to replace old keys
-            # -N to pass no passphrase
-            mv ssh_identities/$name.pub ssh_identities/keys/ # move public key
-            echo "Generated 'ssh_identities/$name' and 'ssh_identities/keys/$name.pub'"
+            if sudo ssh-keygen -f ~/.ssh/$name -N "" -C "$name@$name" -q; then # generate pair of keys
+                # if sudo is used, fingerprint is generated for root@<hostname>
+                # -C to replace root@<hostname> with $name@$name
+                # -N to pass no passphrase
+                echo "Generated '~/.ssh/$name' and '~/.ssh/$name.pub'"
+            else
+                echo "Error: Failed to generate keys"
+            fi
+            
+            if sudo cp ~/.ssh/$name.pub ssh_identities/keys/ 2>/dev/null \
+                && sudo cp ~/.ssh/$name ssh_identities/; then
+                echo "Copied keys to 'ssh_identities/$name' and 'ssh_identities/keys/$name.pub'"
+            else
+                echo "Error: Failed to generate"
+            fi
         fi
 
-        if [ -f ~/.ssh/config ] && [ ! -f ~/.ssh/config.backup ]; then # make backup if config was previously present
-            sudo mv ~/.ssh/config ~/.ssh/config.bak
-            echo "Found existing config in '~/.ssh/'"
-            echo "Creating backup of config..."
-            # prevent other hosts from being lost
-            # otherwise would have to remove "identities" to prevent duplicates (lazy
-            # solution, though if any hosts are present that are not also robots, it
-            # is unlikely they can be reached anyway)
-        fi
-
-        echo "Copy hosts and ALL local keys to '~/.ssh'? (Y/n)"
+        echo "Copy hosts (config) and ALL local keys except oown to '~/.ssh'? (Y/n/config only)"
+        echo "Warning: This will overwrite existing files"
         read move_to_ssh
         if [ $move_to_ssh == "n" ] || [ $move_to_ssh == "N" ]; then
             echo "Done"
         else
-            sudo cp ssh_identities/config ~/.ssh/
-            sudo cp ssh_identities/$MESH_IDENTITY ~/.ssh/
-            sudo cp ssh_identities/keys/* ~/.ssh/
+            if [ -f ~/.ssh/config ] && [ ! -f ~/.ssh/config.backup ]; then
+                # make backup if config was previously present
+                echo "Found existing config in '~/.ssh/'"
+                echo "Creating backup of config..."
+                sudo mv ~/.ssh/config ~/.ssh/config.bak
+                # prevent other hosts from being lost
+                # otherwise would have to remove "identities" to prevent duplicates (lazy
+                # solution, though if any hosts are present that are not also robots, it
+                # is unlikely they can be reached anyway)
+            fi
+            
+            if [ $move_to_ssh == "config" ] || [ $move_to_ssh == "config only" ]; then
+                sudo cp ssh_identities/config ~/.ssh/
+            else
+                sudo cp ssh_identities/config ~/.ssh/
+                sudo cp ssh_identities/$MESH_IDENTITY ~/.ssh/
+                for key in $(ls ssh_identities/keys/); do
+                    if [ ! $key == "$name.pub" ]; then
+                        sudo cp ssh_identities/keys/$key ~/.ssh/
+                    fi
+                done
+            fi
             echo "Copied files"
         fi
     fi
@@ -273,33 +306,50 @@ elif [ $1 == "setup" ]; then
     sudo chmod +x /usr/local/bin/batman_adv_setup.bash
     sudo chmod +x /usr/local/bin/batman_adv_healthcheck.bash
     sudo chmod +x /usr/local/bin/iw_dump.bash
+    sudo chmod +x /usr/local/bin/docker_leader.bash
+    sudo chmod +x /usr/local/bin/docker_init.bash
+    sudo chmod +x /usr/local/bin/rx_copy.bash
     
     sudo cp system\ services/*.service /etc/systemd/system/
     sudo cp system\ services/*.timer /etc/systemd/system/
     
     sudo systemctl daemon-reload
-    sudo systemctl restart batman_adv_setup.service
-    sudo systemctl restart batman_adv_healthcheck.service
     
     sudo systemctl enable batman_adv_setup.service
     sudo systemctl enable batman_adv_healthcheck.service
     sudo systemctl enable --now iw_dump.timer
+    sudo systemctl enable docker_init.service
+    sudo systemctl enable rx_copy.service
+    
     echo "Done"
 elif [ $1 == "cleanup" ]; then
     echo "Starting cleanup..."
     sudo systemctl stop batman_adv_healthcheck.service
     sudo systemctl stop batman_adv_setup.service
+    sudo systemctl stop docker_leader.service
+    sudo systemctl stop docker_init.service
+    sudo systemctl stop rx_copy.service
     
     sudo systemctl disable batman_adv_healthcheck.service
     sudo systemctl disable batman_adv_setup.service
     sudo systemctl disable --now iw_dump.timer 1> /dev/null
+    sudo systemctl disable docker_leader.service
+    sudo systemctl disable docker_init.service
+    sudo systemctl disable rx_copy.service
     
     sudo rm -f /etc/systemd/system/batman_adv_setup.service
     sudo rm -f /etc/systemd/system/batman_adv_healthcheck.service
     sudo rm -f /etc/systemd/system/iw_dump.service
     sudo rm -f /etc/systemd/system/iw_dump.timer
+    sudo rm -f /etc/systemd/system/docker_leader.service
+    sudo rm -f /etc/systemd/system/docker_init.service
+    sudo rm -f /etc/systemd/system/rx_copy.service
+    
     sudo rm -f /usr/local/bin/batman_adv_setup.bash
     sudo rm -f /usr/local/bin/batman_adv_healthcheck.bash
+    sudo rm -f /usr/local/bin/docker_leader.bash
+    sudo rm -f /usr/local/bin/docker_init.bash
+    sudo rm -f /usr/local/bin/rx_copy.bash
     rm -rf /tmp/iw_dump/
     echo "Done"
 elif [ $1 == "restart" ]; then
@@ -307,12 +357,20 @@ elif [ $1 == "restart" ]; then
 	    sudo systemctl restart batman_adv_setup.service
 	    sudo systemctl restart batman_adv_healthcheck.service
         sudo systemctl start iw_dump.timer
+        # sudo systemctl restart docker_leader.service
+        sudo systemctl restart docker_init.service
     elif [ $2 == "batman_adv_setup" ]; then
     	sudo systemctl restart batman_adv_setup.service
     elif [ $2 == "batman_adv_healthcheck" ]; then
     	sudo systemctl restart batman_adv_healthcheck.service
     elif [ $2 == "iw_dump" ]; then
         sudo systemctl restart iw_dump.timer
+    elif [ $2 == "docker_leader" ]; then
+        sudo systemctl restart docker_leader.service
+    elif [ $2 == "docker_init" ]; then
+        sudo systemctl restart docker_init.service
+    elif [ $2 == "rx_copy" ]; then
+        sudo systemctl restart rx_copy.service
     else
         echo_valid_service
     fi
@@ -321,12 +379,21 @@ elif [ $1 == "stop" ]; then
 	    sudo systemctl stop batman_adv_setup.service
 	    sudo systemctl stop batman_adv_healthcheck.service
         sudo systemctl stop iw_dump.timer
+        sudo systemctl stop docker_leader.service
+        sudo systemctl stop docker_init.service
+        sudo systemctl stop rx_copy.service
     elif [ $2 == "batman_adv_setup" ]; then
     	sudo systemctl stop batman_adv_setup.service
     elif [ $2 == "batman_adv_healthcheck" ]; then
     	sudo systemctl stop batman_adv_healthcheck.service
     elif [ $2 == "iw_dump" ]; then
         sudo systemctl stop iw_dump.timer # useless?
+    elif [ $2 == "docker_leader" ]; then
+        sudo systemctl stop docker_leader.service
+    elif [ $2 == "docker_init" ]; then
+        sudo systemctl stop docker_init.service
+    elif [ $2 == "rx_copy" ]; then
+        sudo systemctl stop rx_copy.service
     else
         echo_valid_service
     fi
@@ -335,12 +402,17 @@ elif [ $1 == "enable" ]; then
 	    sudo systemctl enable batman_adv_setup.service
 	    sudo systemctl enable batman_adv_healthcheck.service
         sudo systemctl enable iw_dump.timer
+        # sudo systemctl enable docker_leader.service
+        sudo systemctl enable docker_init.service
+        sudo systemctl enable rx_copy.service
     elif [ $2 == "batman_adv_setup" ]; then
     	sudo systemctl enable batman_adv_setup.service
     elif [ $2 == "batman_adv_healthcheck" ]; then
     	sudo systemctl enable batman_adv_healthcheck.service
     elif [ $2 == "iw_dump" ]; then
     	sudo systemctl enable iw_dump.timer 1> /dev/null
+    elif [ $2 == "rx_copy" ]; then
+        sudo systemctl enable rx_copy.service
     else
         echo_valid_service
     fi
@@ -348,12 +420,21 @@ elif [ $1 == "disable" ]; then
     if [ -z $2 ]; then
 	    sudo systemctl disable batman_adv_setup.service
 	    sudo systemctl disable batman_adv_healthcheck.service
+        sudo systemctl disable docker_leader.service
+        sudo systemctl disable docker_init.service
+        sudo systemctl disable rx_copy.service
     elif [ $2 == "batman_adv_setup" ]; then
     	sudo systemctl disable batman_adv_setup.service
     elif [ $2 == "batman_adv_healthcheck" ]; then
     	sudo systemctl disable batman_adv_healthcheck.service
     elif [ $2 == "iw_dump" ]; then
     	sudo systemctl disable iw_dump.timer 1> /dev/null
+    elif [ $2 == "docker_leader" ]; then
+        sudo systemctl disable docker_leader.service
+    elif [ $2 == "docker_init" ]; then
+        sudo systemctl disable docker_init.service
+    elif [ $2 == "rx_copy" ]; then
+        sudo systemctl disable rx_copy.service
     else
         echo_valid_service
     fi
@@ -361,6 +442,8 @@ elif [ $1 == "managed" ]; then
     sudo systemctl stop batman_adv_setup.service 2>/dev/null
     sudo systemctl stop batman_adv_healthcheck.service 2>/dev/null
     sudo systemctl stop iw_dump.timer 2>/dev/null
+    sudo systemctl stop docker_leader.service 2>/dev/null
+    sudo systemctl stop docker_init.service 2>/dev/null
 
     sudo ip addr del "$MESH_IP/24" dev bat0
     sudo ip addr del "$MESH_IP/24" dev $WLANDEV

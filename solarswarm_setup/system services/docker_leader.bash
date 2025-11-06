@@ -28,7 +28,7 @@ while [ 0 ]; do
         read hostname status <<< $i # for instance, assign "example_name 0" to variables
         # status can be: Ready, Down, Unknown, or Disconnected
         if [ -f $MANAGER_LIST ]; then # check if manager_list exists
-            count=$(awk "/$hostname/" -F " " "{print $2}" $MANAGER_LIST)
+            count=$(awk -F " " '/$hostname/ {print $2}' $MANAGER_LIST)
         else
             count=0
         fi

@@ -23,10 +23,10 @@ Host delta
         User delta
         IdentityFile ~/.ssh/delta.pub
 
-Host echo
+Host ecco
         HostName 192.168.1.5
-        User echo
-        IdentityFile ~/.ssh/echo.pub
+        User ecco
+        IdentityFile ~/.ssh/ecco.pub
 
 Host foxtrot
         HostName 192.168.1.6

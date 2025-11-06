@@ -1,15 +1,9 @@
-CAN_BECOME_MANAGER=true
-CAN_BECOME_LEADER=false
-CPU_ARCHITECTURE=x86_64 # oder ARM64, System z, PowerPC64, RISC-V, x86
-    uname --help
-    lscpu --help
-    ^ mit service_helper.bash anlegen
-CPU_COUNT=8 # oder 4, 2, ...
-    nproc
-    lscpu
-RAM_GE16=false # grob greater equal 16 GB, true oder false
+CAN_BECOME_MANAGER
+CPU_ARCHITECTURE=x86_64
+CPU_COUNT=8
+RAM_GE16=false
 RAM_GE8=true
 RAM_GE4=true
-HAS_2D_MAP_DATA=false # oder true
-HAS_3D_MAP_DATA=false
-HAS_DB_DATA=false
+HAS_2D_MAP_DATA
+HAS_3D_MAP_DATA
+HAS_DB_DATA

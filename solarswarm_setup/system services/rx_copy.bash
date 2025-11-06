@@ -1,5 +1,6 @@
 #!/bin/bash
 COPY_TO_SSH=true
+AUTO_UPDATE_SSH=true
 # SWARM_MODE=true
 SW_SETUP=~/solarswarm_setup/
 
@@ -24,15 +25,17 @@ if [ $COPY_TO_SSH == true ]; then
         fi
 
         for pub_key in $(ls $SW_SETUP/rx/ssh/ | grep .pub); do
-            mv $SW_SETUP/rx/ssh/$pub_key $SW_SETUP/ssh_identities/keys/
-            changed=true
+            if [ ! $pub_key == $MESH_IDENTITY.pub ]; then
+                mv $SW_SETUP/rx/ssh/$pub_key $SW_SETUP/ssh_identities/keys/
+                changed=true
+            fi
         done
 
         # copy all to .ssh/ if anything has changed
         # done after everything was moved so ssh_identities/ and .ssh/ are synchronized
-        if [ $changed == true ]; then
-            sudo cp $SW_SETUP/ssh_identities/names ~/.ssh/
-            sudo cp $SW_SETUP/ssh_identities/names_with_ip ~/.ssh/
+        if [ $changed == true ] && [ $AUTO_UPDATE_SSH == true ]; then
+            # sudo cp $SW_SETUP/ssh_identities/names ~/.ssh/
+            # sudo cp $SW_SETUP/ssh_identities/names_with_ip ~/.ssh/
             sudo cp $SW_SETUP/ssh_identities/config ~/.ssh/
             sudo cp $SW_SETUP/ssh_identities/keys/*.pub ~/.ssh/ # all public keys
         fi
