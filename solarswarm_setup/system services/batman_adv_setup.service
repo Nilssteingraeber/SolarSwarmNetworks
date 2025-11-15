@@ -8,6 +8,7 @@ Type=simple
 Restart=on-failure
 RestartSec=5
 ExecStart=/usr/local/bin/batman_adv_setup.bash
+User=own_name
 
 [Install]
 WantedBy=multi-user.target

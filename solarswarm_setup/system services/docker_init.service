@@ -8,6 +8,7 @@ Type=simple
 Restart=on-failure
 RestartSec=2
 ExecStart=/usr/local/bin/docker_init.bash
+User=own_name
 
 [Install]
 WantedBy=multi-user.target

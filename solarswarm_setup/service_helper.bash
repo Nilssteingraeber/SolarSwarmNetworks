@@ -1,13 +1,22 @@
 #!/bin/bash
 # v0.9.2
-SSH_TIMEOUT=1 # change if too short (was sufficient to connect to github.com in a connection test)
+SSH_TIMEOUT="-o ConnectTimeout=1"
+# change if too short (was sufficient to connect to github.com in a connection test)
+# ConnectTimeout could be set in '/etc/ssh/ssh_config' instead, but it is easier to find here
+# note: docker_init.bash and docker_leader.bash also set this variable locally
 
-SW_SETUP=~/solarswarm_setup
+HOST_CHECKING="-o StrictHostKeyChecking=no"
+# allow ssh connection to hosts without strict authorization (susceptible to MIT attacks)
+# change StrictHostKeyChecking to "yes" or make ariable empty for more security if CA was set up
+# StrictHostKeyChecking could be set in '/etc/ssh/ssh_config' instead, but it is easier to find here
+# note: docker_init.bash and docker_leader.bash also set this variable locally
+
+SW_SETUP=~/solarswarm_setup # where solarswarm_setup is located (~ is suggested)
 cd $SW_SETUP # requires parent directory 'solarswarm_setup' to be placed in '~'
 
 source /etc/environment
 
-if [ -z $1 ]; then
+if [ -z $1 ]; then # print help if no arguments were passed
     echo """    Correct usage:
         bash service_helper [options] [additional options]
     Options:
@@ -78,20 +87,36 @@ send_to_hosts() { # copy files to all available ssh hosts
         exit 1
     fi
     
-    sudo hostname $MESH_IDENTITY
-    for i in $(cat ssh_identities/names_with_ip); do
-        read host ip <<< $i
-        if [ $host == $MESH_IDENTITY ]; then continue; fi # skip self
+    sudo hostname $MESH_IDENTITY # set hostname
+    
+    # go through list of hosts using a for-each loop
+    # for i in $(cat ...names_with_ip) would read word by word, not line by line
+    # so instead, the line count is used to cut the list to one line containing only: host ip
+    line_count=$(cat $SW_SETUP/ssh_identities/names_with_ip | wc -l)
+    for i in $(seq 1 $line_count); do
+        # read host and ip from single i-th line
+        read host ip <<< $(head -$i $SW_SETUP/ssh_identities/names_with_ip | tail -1)
+        # skip self or host without public key
+        # '[ ! -z $host ]' to catch empty string: '[ == $MESH_IDENTITY ]' throws syntax exception
+        if [ ! -z $host ] && [ $host == $MESH_IDENTITY ] || [ ! -f ~/.ssh/$host.pub ]; then continue; fi # skip self
         echo "Connecting to $host $ip..."
-        if ping -c 1 $ip; then
+        # check if host is reachable (timeout 1 second (-W) and ping count limited to 1 (-c))
+        if ping -W 1 -c 1 $ip &>/dev/null; then # ping once with 1s timeout
             echo "Reached $host"
-            if [ $1 == "keys" ]; then # copy public keys
-                sudo scp -o ConnectTimeout=$SSH_TIMEOUT ssh_identities/keys/*.pub $host:$SW_SETUP/ssh_identities/rx/ssh/
+            remote_setup=/home/$host/solarswarm_setup
+            if [ ! -z $1 ] && [ $1 == "keys" ]; then # copy public keys
+                scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/*.pub \
+                    $host:$remote_setup/ssh_identities/rx/ssh/ # copy public keys
+                scp $SSH_TIMEOUT $HOST_CHECKING ~/.ssh/authorized_keys \
+                    $host:$remote_setup/rx/ssh/ # copy authorized_keys
                 # host must have rx_copy.service active to copy it to their .ssh directory
-            elif [ $1 == "hosts" ]; then # copy names, names_with_ip, and config to all reachable hosts
-                sudo scp -o ConnectTimeout=$SSH_TIMEOUT ssh_identities/names $host:$SW_SETUP/ssh_identities/rx/ssh/
-                sudo scp -o ConnectTimeout=$SSH_TIMEOUT ssh_identities/names_with_ip $host:$SW_SETUP/ssh_identities/rx/ssh/
-                sudo scp -o ConnectTimeout=$SSH_TIMEOUT ssh_identities/config $host:$SW_SETUP/ssh_identities/rx/ssh/
+            elif [ ! -z $1 ] && [ $1 == "hosts" ]; then # copy names, names_with_ip, and config to all reachable hosts
+                scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/names \
+                    $host:$remote_setup/ssh_identities/rx/ssh/
+                scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/names_with_ip \
+                    $host:$remote_setup/ssh_identities/rx/ssh/
+                scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/config \
+                    $host:$remote_setup/ssh_identities/rx/ssh/
             fi
         else
             echo "Failed to reach $host"
@@ -177,9 +202,9 @@ elif [ $1 == "wlandev" ]; then
     echo "Exported WLANDEV=$wlandev"
     source /etc/environment
 elif [ $1 == "send" ]; then
-    if [ $2 == "keys" ]; then
+    if [ ! -z $2 ] && [ $2 == "keys" ]; then
         send_to_hosts keys
-    elif [ $2 == "hosts" ]; then
+    elif [ ! -z $2 ] && [ $2 == "hosts" ]; then
         send_to_hosts hosts
     else
         echo "Error: Choose either keys (public keys) or hosts (config, names, names_with_ip) to send"
@@ -187,7 +212,7 @@ elif [ $1 == "send" ]; then
     fi
 elif [ $1 == "ssh" ]; then
     if [ ! -d ~/.ssh ]; then # check if .ssh/ exists
-        sudo mkdir ~/.ssh
+        mkdir ~/.ssh
     fi
 
     if [ -z $2 ]; then # ask for name
@@ -243,52 +268,53 @@ elif [ $1 == "ssh" ]; then
         echo "Exported MESH_IDENTITY=\"$name\""
         source /etc/environment # load envs
 
+        sudo chown -R $(whoami) ~/.ssh/
+        touch ~/.ssh/known_hosts
         if [ $generate == true ]; then
-            # sudo ssh-keygen -R $name
-            # -R to remove old keys with name (needed to generate new keys without sudo rights)
-            # use local repostories of keys in case scp (used in send option) can not overwrite
-            if sudo ssh-keygen -f ~/.ssh/$name -N "" -C "$name@$name" -q; then # generate pair of keys
+            if ssh-keygen -f ~/.ssh/$name -N "" -C "$name@$name" -q; then # generate pair of keys
                 # if sudo is used, fingerprint is generated for root@<hostname>
-                # -C to replace root@<hostname> with $name@$name
+                # -C to replace comment root@<hostname> with $name@$name
                 # -N to pass no passphrase
                 echo "Generated '~/.ssh/$name' and '~/.ssh/$name.pub'"
             else
                 echo "Error: Failed to generate keys"
             fi
             
-            if sudo cp ~/.ssh/$name.pub ssh_identities/keys/ 2>/dev/null \
-                && sudo cp ~/.ssh/$name ssh_identities/; then
+            if cp ~/.ssh/$name.pub ssh_identities/keys/ 2>/dev/null \
+                && cp ~/.ssh/$name ssh_identities/; then
                 echo "Copied keys to 'ssh_identities/$name' and 'ssh_identities/keys/$name.pub'"
             else
                 echo "Error: Failed to generate"
             fi
         fi
 
-        echo "Copy hosts (config) and ALL local keys except oown to '~/.ssh'? (Y/n/config only)"
+        echo "Copy hosts (config) and ALL local keys except own to '~/.ssh'? (Y/n/config only)"
         echo "Warning: This will overwrite existing files"
         read move_to_ssh
-        if [ $move_to_ssh == "n" ] || [ $move_to_ssh == "N" ]; then
+        if [ -z $move_to_ssh ] || [ $move_to_ssh == "n" ] || [ $move_to_ssh == "N" ]; then
             echo "Done"
         else
             if [ -f ~/.ssh/config ] && [ ! -f ~/.ssh/config.backup ]; then
                 # make backup if config was previously present
                 echo "Found existing config in '~/.ssh/'"
                 echo "Creating backup of config..."
-                sudo mv ~/.ssh/config ~/.ssh/config.bak
+                mv ~/.ssh/config ~/.ssh/config.bak
                 # prevent other hosts from being lost
                 # otherwise would have to remove "identities" to prevent duplicates (lazy
                 # solution, though if any hosts are present that are not also robots, it
                 # is unlikely they can be reached anyway)
             fi
             
-            if [ $move_to_ssh == "config" ] || [ $move_to_ssh == "config only" ]; then
-                sudo cp ssh_identities/config ~/.ssh/
+            if [ -z $move_to_ssh ] || [ $move_to_ssh == "config" ] || [ $move_to_ssh == "config only" ]; then
+                cp ssh_identities/config ~/.ssh/
+                sudo sed -i "s/own_name/$MESH_IDENTITY/" ~/.ssh/config # replace own_name with MESH_IDENTITY
             else
-                sudo cp ssh_identities/config ~/.ssh/
-                sudo cp ssh_identities/$MESH_IDENTITY ~/.ssh/
+                cp ssh_identities/config ~/.ssh/
+                sudo sed -i "s/own_name/$MESH_IDENTITY/" ~/.ssh/config
+                cp ssh_identities/$MESH_IDENTITY ~/.ssh/
                 for key in $(ls ssh_identities/keys/); do
-                    if [ ! $key == "$name.pub" ]; then
-                        sudo cp ssh_identities/keys/$key ~/.ssh/
+                    if [ ! -z $key ] && [ ! $key == "$name.pub" ]; then
+                        cp ssh_identities/keys/$key ~/.ssh/
                     fi
                 done
             fi
@@ -310,7 +336,11 @@ elif [ $1 == "setup" ]; then
     sudo chmod +x /usr/local/bin/docker_init.bash
     sudo chmod +x /usr/local/bin/rx_copy.bash
     
-    sudo cp system\ services/*.service /etc/systemd/system/
+    for service in $(ls system\ services/ | grep .service); do
+        cp system\ services/$service system\ services/$service.tmp
+        sed -i "s/User=own_name/User=$MESH_IDENTITY/" system\ services/$service.tmp
+    done
+    sudo mv system\ services/*.service.tmp /etc/systemd/system/
     sudo cp system\ services/*.timer /etc/systemd/system/
     
     sudo systemctl daemon-reload

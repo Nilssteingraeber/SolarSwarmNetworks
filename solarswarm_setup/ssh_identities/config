@@ -1,135 +1,135 @@
 #Host example_name
 #        HostName 192.168.1.100
 #        User example_name
-#        IdentityFile ~/.ssh/example_name.pub
+#        IdentityFile ~/.ssh/own_name
 
 Host alfa
         HostName 192.168.1.1
         User alfa
-        IdentityFile ~/.ssh/alfa.pub
+        IdentityFile ~/.ssh/own_name
 
 Host bravo
         HostName 192.168.1.2
         User bravo
-        IdentityFile ~/.ssh/bravo.pub
+        IdentityFile ~/.ssh/own_name
 
 Host charlie
         HostName 192.168.1.3
         User charlie
-        IdentityFile ~/.ssh/charlie.pub
+        IdentityFile ~/.ssh/own_name
 
 Host delta
         HostName 192.168.1.4
         User delta
-        IdentityFile ~/.ssh/delta.pub
+        IdentityFile ~/.ssh/own_name
 
-Host ecco
+Host echo
         HostName 192.168.1.5
-        User ecco
-        IdentityFile ~/.ssh/ecco.pub
+        User echo
+        IdentityFile ~/.ssh/own_name
 
 Host foxtrot
         HostName 192.168.1.6
         User foxtrot
-        IdentityFile ~/.ssh/foxtrot.pub
+        IdentityFile ~/.ssh/own_name
 
 Host golf
         HostName 192.168.1.7
         User golf
-        IdentityFile ~/.ssh/golf.pub
+        IdentityFile ~/.ssh/own_name
 
 Host hotel
         HostName 192.168.1.8
         User hotel
-        IdentityFile ~/.ssh/hotel.pub
+        IdentityFile ~/.ssh/own_name
 
 Host india
         HostName 192.168.1.9
         User india
-        IdentityFile ~/.ssh/india.pub
+        IdentityFile ~/.ssh/own_name
 
 Host juliett
         HostName 192.168.1.10
         User juliett
-        IdentityFile ~/.ssh/juliett.pub
+        IdentityFile ~/.ssh/own_name
 
 Host kilo
         HostName 192.168.1.11
         User kilo
-        IdentityFile ~/.ssh/kilo.pub
+        IdentityFile ~/.ssh/own_name
 
 Host lima
         HostName 192.168.1.12
         User lima
-        IdentityFile ~/.ssh/lima.pub
+        IdentityFile ~/.ssh/own_name
 
 Host mike
         HostName 192.168.1.13
         User mike
-        IdentityFile ~/.ssh/mike.pub
+        IdentityFile ~/.ssh/own_name
 
 Host november
         HostName 192.168.1.14
         User november
-        IdentityFile ~/.ssh/november.pub
+        IdentityFile ~/.ssh/own_name
 
 Host oscar
         HostName 192.168.1.15
         User oscar
-        IdentityFile ~/.ssh/oscar.pub
+        IdentityFile ~/.ssh/own_name
 
 Host papa
         HostName 192.168.1.16
         User papa
-        IdentityFile ~/.ssh/papa.pub
+        IdentityFile ~/.ssh/own_name
 
 Host quebec
         HostName 192.168.1.17
         User quebec
-        IdentityFile ~/.ssh/quebec.pub
+        IdentityFile ~/.ssh/own_name
 
 Host romeo
         HostName 192.168.1.18
         User romeo
-        IdentityFile ~/.ssh/romeo.pub
+        IdentityFile ~/.ssh/own_name
 
 Host sierra
         HostName 192.168.1.19
         User sierra
-        IdentityFile ~/.ssh/sierra.pub
+        IdentityFile ~/.ssh/own_name
 
 Host tango
         HostName 192.168.1.20
         User tango
-        IdentityFile ~/.ssh/tango.pub
+        IdentityFile ~/.ssh/own_name
 
 Host uniform
         HostName 192.168.1.21
         User uniform
-        IdentityFile ~/.ssh/uniform.pub
+        IdentityFile ~/.ssh/own_name
 
 Host victor
         HostName 192.168.1.22
         User victor
-        IdentityFile ~/.ssh/victor.pub
+        IdentityFile ~/.ssh/own_name
 
 Host whiskey
         HostName 192.168.1.23
         User whiskey
-        IdentityFile ~/.ssh/whiskey.pub
+        IdentityFile ~/.ssh/own_name
 
 Host xray
         HostName 192.168.1.24
         User xray
-        IdentityFile ~/.ssh/xray.pub
+        IdentityFile ~/.ssh/own_name
 
 Host yankee
         HostName 192.168.1.25
         User yankee
-        IdentityFile ~/.ssh/yankee.pub
+        IdentityFile ~/.ssh/own_name
 
 Host zulu
         HostName 192.168.1.26
         User zulu
-        IdentityFile ~/.ssh/zulu.pub
+        IdentityFile ~/.ssh/own_name
 
