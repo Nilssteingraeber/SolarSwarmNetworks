@@ -31,6 +31,12 @@ set(files
   "srv/RobotInterfaceInfo.srv"
   # since v0.2.1
   "msg/RobotActivity.msg"
+  # since v0.4.0
+  "srv/FibonacciService.srv"
+  "srv/GetServiceServerMac.srv"
+  "srv/IntAvgService.srv"
+  "srv/IntRngService.srv"
+  "srv/StrToLowerUpperService.srv"
 )
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${files}

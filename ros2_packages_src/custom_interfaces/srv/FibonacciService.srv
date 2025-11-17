@@ -1,0 +1,4 @@
+uint64 target 5
+---
+uint64[] numbers
+uint64 exact
