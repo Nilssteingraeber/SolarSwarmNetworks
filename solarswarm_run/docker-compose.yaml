@@ -45,7 +45,7 @@ services:
         constraint:
           - node.labels.is_data_sink # should only be given once (same host which runs web and db)
   
-  web:
+  web: # TODO
     build:
       context: ./data_sink
       dockerfile: backend.Dockerfile
@@ -67,7 +67,7 @@ services:
         constraint:
           - node.labels.is_data_sink # should only be given once (same host which runs data_sink and db)
 
-  db:
+  db: # TODO
     image: postgres:15
     container_name: postgres_db
     environment:
@@ -93,6 +93,57 @@ services:
       dockerfile: example_ros2_services.Dockerfile
     environment:
       - EXAMPLE_ROS2_SERVICE=fibonacci
+    deploy:
+      mode: replicated
+      replicas: 2
+      max_replicas_per_node: 1
+      placement:
+        constraint:
+          - node.labels.ram_ge_8gb
+  
+  get_service_server_mac_example:
+    build:
+      context: ./example_ros2_services
+      dockerfile: example_ros2_services.Dockerfile
+    environment:
+      - EXAMPLE_ROS2_SERVICE=get_service_server_mac
+    deploy:
+      mode: global
+  
+  int_avg_example:
+    build:
+      context: ./example_ros2_services
+      dockerfile: example_ros2_services.Dockerfile
+    environment:
+      - EXAMPLE_ROS2_SERVICE=int_avg
+    deploy:
+      mode: replicated
+      replicas: 2
+      max_replicas_per_node: 1
+      placement:
+        constraint:
+          - node.labels.ram_ge_8gb
+  
+  int_rng_example:
+    build:
+      context: ./example_ros2_services
+      dockerfile: example_ros2_services.Dockerfile
+    environment:
+      - EXAMPLE_ROS2_SERVICE=int_rng
+    deploy:
+      mode: replicated
+      replicas: 2
+      max_replicas_per_node: 1
+      placement:
+        constraint:
+          - node.labels.ram_ge_8gb
+
+  str_to_lower_upper_example:
+    build:
+      context: ./example_ros2_services
+      dockerfile: example_ros2_services.Dockerfile
+    environment:
+      - EXAMPLE_ROS2_SERVICE=str_to_lower_upper
     deploy:
       mode: replicated
       replicas: 2

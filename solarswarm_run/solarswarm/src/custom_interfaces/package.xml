@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>custom_interfaces</name>
-  <version>0.3.2</version>
+  <version>0.4.0</version>
   <description>This package contains custom interfaces for the SolarSwarm project.</description>
   <maintainer email="vincent.welsch@stud.hs-bochum.de">Vincent Welsch</maintainer>
   <license>Apache-2.0</license>
