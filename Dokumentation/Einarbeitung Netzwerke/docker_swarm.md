@@ -27,14 +27,14 @@ Services sind praktisch eine Gruppe von Containern, die in einem Schwarm gestart
 - `--name <Name>` gibt einem Service einen Namen, der in `service ls` sichtbar ist.
 - `--replicas <Anzahl>` ist standardmäßig 1. Bei größeren Zahlen versucht ein Schwarm stets, die angegebene Anzahl an Repikas zu erhalten. `service ls` zeigt an, wie viele davon laufen, bspw. `1/1`, `5/5` oder `4/5`, falls eins ausgefallen ist.
 - `--replicas-max-per-node <Anzahl>` ist standardmäßig 0 (unbegrenzt). Gibt die maximale `Anzahl` an Replikas des Services pro Knoten an.
-- `--mode <replicated/global>` ist standardmäßig `replicated`. `global` legt fest, dass ein Service auf jedem aktiven Knoten im Schwarm laufen soll.
-- `--mode <replicated-job/global-job>` startet Service als `job`. Diese Art von Service läuft nur bis zum Ende einer Operation. Replizierte Jobs laufen gleichzeitig, können aber mit `--max-concurrent <Anzahl>` beschränkt werden.
+- `--mode <replicated | global>` ist standardmäßig `replicated`. `global` legt fest, dass ein Service auf jedem aktiven Knoten im Schwarm laufen soll.
+- oder `--mode <replicated-job | global-job>` startet Service als `job`. Diese Art von Service läuft nur bis zum Ende einer Operation. Replizierte Jobs laufen gleichzeitig, können aber mit `--max-concurrent <Anzahl>` beschränkt werden.
 - `--restart-max-attempts <Anzahl>` gibt an, wie oft versucht wird, einen Service neuzustarten.
 - `--secret [source=]<Quelle>[,target=<Ziel>]` legt ein Geheimnis im Container unter `/run/secrets` oder `/run/secrets/<Ziel>` ab. Auch Besitzer, Gruppe und Zugriffsrechte können definiert werden. Für mehrere Geheimnisse kann die Option mehrmals verwendet werden. Eignet sich für Schlüssel.
 - `--config [source=]<Quelle>[,target=<Ziel>]` mountet config-Datei in den Container. Auch Besitzer, Gruppe und Zugriffsrechte können definiert werden. Eignet sich für Datenbanken.
 - `--env <Variable>=<Wert>` legt Umgebungsvariablen an. Für mehrere Variablen kann die Option mehrmals verwendet werden.
 - `--constraint <Bedingung>` beschränkt, welche Knoten einen Task ausführen können. Bedingungen werden mit `==` und `!=` formuliert, bspw. `--constraint node.role==manager`. Für mehrere Bedingungen kann die Option mehrmals verwendet werden, wodurch sie mit einem logischen `AND` verknüpft werden.
-- `--network` verhält sich wie bei `docker run`. Hier ist es nur sinnvoll, `overlay` als Treiber zu verwenden.
+- `--network` verhält sich wie bei `docker run`. Hier ist es nur sinnvoll, `overlay` oder `host` als Treiber zu verwenden.
 - `--mount` verhält sich wie bei `docker run`. Aufgrund des Umfangs lohnt es sich eher, die offizielle Dokumentation heranzuziehen.
 
 Ein Beispiel mit `--mount`:

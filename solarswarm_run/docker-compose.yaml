@@ -1,0 +1,109 @@
+# docker stack delpoy does not build images
+# https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-registry/
+# https://www.docker.com/blog/how-to-use-your-own-registry-2/
+# https://docs.docker.com/reference/cli/docker/image/push/
+# docker compose build
+# docker compose push: https://docs.docker.com/reference/cli/docker/compose/push/
+# run with `sudo docker stack delpoy -c docker-compose.yaml Solarswarm`
+
+services:
+  base_robot:
+    build:
+      context: ./base_robot
+      dockerfile: base_robot.Dockerfile
+      network: host
+    volumes:
+      - /tmp/iw_dump/:/tmp/iw_dump/
+    deploy:
+      mode: global
+      max_replicas_per_node: 1
+      #placement:
+        #constraint:
+          #- node.labels.<Label> [== <Wert> | != <Wert>]
+  
+  data_sink:
+    build:
+      context: ./data_sink
+      dockerfile: sw_robot.Dockerfile
+      # network: host
+    networks:
+      - internal
+    environment:
+      # data sink
+      # FORWARD_TO_DB: forward
+      TRIES_TO_GET_STATES: 2
+      # DB
+      DB_NAME: rosData
+      DB_USER: postgres
+      DB_PASSWORD: securepassword
+      DB_HOST: db
+      DB_PORT: "5432"
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraint:
+          - node.labels.is_data_sink # should only be given once (same host which runs web and db)
+  
+  web:
+    build:
+      context: ./data_sink
+      dockerfile: backend.Dockerfile
+    container_name: fastapi_app
+    networks:
+      - internal
+    ports:
+      - "8001:8000"
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgresql://postgres:securepassword@db:5432/rosData
+    volumes:
+      - ./backend:/app
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraint:
+          - node.labels.is_data_sink # should only be given once (same host which runs data_sink and db)
+
+  db:
+    image: postgres:15
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: securepassword
+      POSTGRES_DB: rosData
+    networks:
+      - internal
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraint:
+          - node.labels.is_data_sink # should only be given once (same host which runs data_sink and web)
+  
+  fibonacci_example:
+    build:
+      context: ./example_ros2_services
+      dockerfile: example_ros2_services.Dockerfile
+    environment:
+      - EXAMPLE_ROS2_SERVICE=fibonacci
+    deploy:
+      mode: replicated
+      replicas: 2
+      max_replicas_per_node: 1
+      placement:
+        constraint:
+          - node.labels.ram_ge_8gb
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+    driver: bridge

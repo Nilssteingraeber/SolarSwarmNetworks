@@ -59,9 +59,15 @@ Für SSH relevante Dateien sind in `ssh_identities/` enthalten und werden hier e
 
 Namen und IP-Adressen in `config`, `names` und `names_with_ip` müssen sich stets decken. Hosts sollten in `~/ssh_identities/` und in `~/.ssh/` ihren privaten Schlüssel (für alfa beispielsweise `alfa`) und in `~/ssh_identities/keys` und in `~/.ssh` alle gültigen öffentlichen Schlüssel aller anderen Hosts (`bravo.pub`, `charlie`, ...) haben. Der private und öffentliche Schlüssel liefen im Setup-Verzeichnis an verschiedenen Stellen, da `keys/` als Ziel von `service_helper.bash send keys` gedacht ist und Dateien darin überschrieben werden können. Auch werden Schlüssel an zwei Stellen aufbewahrt, um den Austausch später leichter anpassen zu können.
 
-Mit `service_helper.bash send <keys | hosts>` können entweder alle Schlüssel (Endung `.pub`)aus `ssh_identities/keys/` oder `config`, `names` und `names_with_ip` aus `ssh_identities/` auf alle **derzeitig erreichbaren** Hosts kopiert.
+Mit `service_helper.bash send <keys | hosts>` können entweder alle Schlüssel (Endung `.pub`) aus `ssh_identities/keys/` oder `config`, `names` und `names_with_ip` aus `ssh_identities/` auf alle **derzeitig erreichbaren** Hosts kopiert werden.
+
+
 
 ## service_helper.bash und Services ### UNFINISHED/TODO ###
+Wie bedienen? Welche Funktionen? Welche Systemd Services?
+
+## Erweiterung ### TODO
+Wie erweitern? Wie neue Systemd Services, ROS2 Nodes oder Docker Services hinzufüen?
 
 ### clipboard
 Ausführen von `service_helper.bash`... ohne Parameter Anleitung... zuerst mit `ip link` WLANDEV herausfinden und mit `service_helper.bash wlandev` festlegen... Im Voraus Identität für den Roboter festlegen... mit `service_helper.bash ssh` festlegen, um MESH_IDENTITY und MESH_IP festzulegen...

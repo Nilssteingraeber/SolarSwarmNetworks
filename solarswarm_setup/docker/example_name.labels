@@ -1,9 +1,6 @@
-CAN_BECOME_MANAGER
-CPU_ARCHITECTURE=x86_64
-CPU_COUNT=8
-RAM_GE16=false
-RAM_GE8=true
-RAM_GE4=true
-HAS_2D_MAP_DATA
-HAS_3D_MAP_DATA
-HAS_DB_DATA
+architecture=x86_64
+cpus=8
+ram_ge4
+ram_ge8
+ram_ge16
+has_gpu

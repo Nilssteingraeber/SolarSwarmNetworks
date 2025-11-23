@@ -1,0 +1,5 @@
+string interface ""
+---
+# Either interface definition if one exact match exists or list of all interfaces 
+string definition
+string[] interfaces
