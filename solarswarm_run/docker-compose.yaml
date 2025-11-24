@@ -14,6 +14,7 @@ services:
       network: host
     volumes:
       - /tmp/iw_dump/:/tmp/iw_dump/
+      - ./logs/:/tmp/logs/
     deploy:
       mode: global
       max_replicas_per_node: 1
@@ -26,6 +27,8 @@ services:
       context: ./data_sink
       dockerfile: sw_robot.Dockerfile
       # network: host
+    volumes:
+      - ./logs/:/tmp/logs/
     networks:
       - internal
     environment:
@@ -60,6 +63,7 @@ services:
       - DATABASE_URL=postgresql://postgres:securepassword@db:5432/rosData
     volumes:
       - ./backend:/app
+      - ./logs/:/tmp/logs/
     deploy:
       mode: replicated
       replicas: 1

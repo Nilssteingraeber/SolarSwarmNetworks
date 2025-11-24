@@ -11,6 +11,7 @@ HOST_CHECKING="-o StrictHostKeyChecking=no"
 # StrictHostKeyChecking could be set in '/etc/ssh/ssh_config' instead, but it is easier to find here
 # note: docker_init.bash and docker_leader.bash also set this variable locally
 
+SW_RUN=~/solarswarm_run
 SW_SETUP=~/solarswarm_setup # where solarswarm_setup is located (~ is suggested)
 cd $SW_SETUP # requires parent directory 'solarswarm_setup' to be placed in '~'
 
@@ -29,6 +30,10 @@ if [ -z $1 ]; then # print help if no arguments were passed
         send <keys | hosts>
             copy keys or hosts (names, names_with_ip,
             config) onto all available hosts
+        collect <logs> <all | hostname>
+            collect files from hosts (currently only logs)
+            copies solarswarm_run/logs/ and solarswarm_setup/logs/
+            target is solarswarm_setup/rx/logs/<run | setup>/<hostname>/
     	setup
             copy files, make scripts executable, reload systemd,
     	    enable timer, and restart all services
@@ -75,7 +80,7 @@ echo_valid_service() { # to avoid redundancy
     """
 }
 
-send_to_hosts() { # copy files to all available ssh hosts
+send_to_hosts() { # copy files to all available ssh hosts' rx/
     source /etc/environment # reload envs
     if [ -z $MESH_IDENTITY ]; then # check if name is set
         echo "Error: MESH_IDENTITY has not been set"
@@ -98,7 +103,7 @@ send_to_hosts() { # copy files to all available ssh hosts
         read host ip <<< $(head -$i $SW_SETUP/ssh_identities/names_with_ip | tail -1)
         # skip self or host without public key
         # '[ ! -z $host ]' to catch empty string: '[ == $MESH_IDENTITY ]' throws syntax exception
-        if [ ! -z $host ] && [ $host == $MESH_IDENTITY ] || [ ! -f ~/.ssh/$host.pub ]; then continue; fi # skip self
+        if [ ! -z $host ] && [ $host == $MESH_IDENTITY ] || [ ! -f ~/.ssh/$host.pub ]; then continue; fi
         echo "Connecting to $host $ip..."
         # check if host is reachable (timeout 1 second (-W) and ping count limited to 1 (-c))
         if ping -W 1 -c 1 $ip &>/dev/null; then # ping once with 1s timeout
@@ -122,6 +127,72 @@ send_to_hosts() { # copy files to all available ssh hosts
             echo "Failed to reach $host"
         fi
     done
+}
+
+collect() { # copy files from all reachable ssh hosts to local rx/
+    source /etc/environment # reload envs
+    if [ -z $MESH_IDENTITY ]; then # check if name is set
+        echo "Error: MESH_IDENTITY has not been set"
+        exit 1
+    fi
+
+    if [ -z $MESH_IP ]; then # check if ip is set
+        echo "Error: MESH_IDENTITY has not been set"
+        exit 1
+    fi
+    
+    sudo hostname $MESH_IDENTITY # set hostname
+
+    if [ ! -z $1 ] && [ $1 == "logs" ]; then # copy logs
+        if [ -z $2 ]
+            echo "Error: Expected 'all' or a known name after logs"
+            exit 1
+        elif [ $2 == "all" ]; then
+            line_count=$(cat $SW_SETUP/ssh_identities/names_with_ip | wc -l)
+            for i in $(seq 1 $line_count); do
+                # read host and ip from single i-th line
+                read host ip <<< $(head -$i $SW_SETUP/ssh_identities/names_with_ip | tail -1)
+                # skip self or host without public key
+                if [ ! -z $host ] && [ $host == $MESH_IDENTITY ] || [ ! -f ~/.ssh/$host.pub ]; then continue; fi
+                echo "Connecting to $host $ip..."
+                # check if host is reachable (timeout 1 second (-W) and ping count limited to 1 (-c))
+                if ping -W 1 -c 1 $ip &>/dev/null; then # ping once with 1s timeout
+                    echo "    Reached $host"
+                    remote_run=/home/$host/solarswarm_run
+                    remote_setup=/home/$host/solarswarm_setup
+                    if [ ! -d rx/logs/run/$host ]; then mkdir rx/logs/run/$host; fi
+                    if [ ! -d rx/logs/setup/$host ]; then mkdir rx/logs/setup/$host; fi
+                    scp -r $SSH_TIMEOUT $HOST_CHECKING $host:$remote_run/logs/* rx/logs/run/$host
+                    scp -r $SSH_TIMEOUT $HOST_CHECKING $host:$remote_setup/logs/* rx/logs/setup/$host
+                else
+                    echo "    Failed to reach $host"
+                fi
+            done
+        elif grep -E "^$2$" $SW_SETUP/ssh_identities/names &>/dev/null; then # specific name
+            if [ ! -z $2 ] && [ $2 == $MESH_IDENTITY ] || [ ! -f ~/.ssh/$2.pub ]; then
+                # explicitly collect own logs
+                if [ ! -d rx/logs/run/$MESH_IDENTITY ]; then mkdir rx/logs/run/$MESH_IDENTITY; fi
+                if [ ! -d rx/logs/setup/$MESH_IDENTITY ]; then mkdir rx/logs/setup/$MESH_IDENTITY; fi
+                cp -r $SW_RUN/logs/* $SW_SETUP/rx/logs/$MESH_IDENTITY/
+            else
+                echo "Connecting to $host $ip..."
+                if ping -W 1 -c 1 $ip &>/dev/null; then # ping once with 1s timeout
+                    echo "    Reached $2"
+                    remote_run=/home/$2/solarswarm_run
+                    remote_setup=/home/$2/solarswarm_setup
+                    if [ ! -d rx/logs/run/$2 ]; then mkdir rx/logs/run/$2; fi
+                    if [ ! -d rx/logs/setup/$2 ]; then mkdir rx/logs/setup/$2; fi
+                    scp -r $SSH_TIMEOUT $HOST_CHECKING $2:$remote_run/logs/* rx/logs/run/$2
+                    scp -r $SSH_TIMEOUT $HOST_CHECKING $2:$remote_setup/logs/* rx/logs/setup/$2
+                else
+                    echo "    Failed to reach $2"
+                fi
+            fi
+        fi
+    else
+        echo "Error: No valid option was given"
+        exit 1
+    fi
 }
 
 echo "Warning: This script is executed with root priviliges and uses
@@ -210,6 +281,13 @@ elif [ $1 == "send" ]; then
         echo "Error: Choose either keys (public keys) or hosts (config, names, names_with_ip) to send"
         exit 1    
     fi
+elif [ $1 == "collect" ]; then
+    if [ ! -z $2 ] && [ $2 == "logs" ]; then
+        collect logs $3
+    else
+        echo "Error: Only logs can be collected currentrly"
+        exit 1    
+    fi
 elif [ $1 == "ssh" ]; then
     if [ ! -d ~/.ssh ]; then # check if .ssh/ exists
         mkdir ~/.ssh
@@ -262,7 +340,7 @@ elif [ $1 == "ssh" ]; then
         echo "MESH_IP=\"$mesh_ip\"" | sudo tee -a /etc/environment > /dev/null # append new
         echo "Exported MESH_IP=\"$mesh_ip\""
 	
-	sudo hostname $name
+	    sudo hostname $name
         sudo sed -i "/MESH_IDENTITY=/d" /etc/environment # remove previous MESH_IP, if set
         echo "MESH_IDENTITY=\"$name\"" | sudo tee -a /etc/environment > /dev/null # append new
         echo "Exported MESH_IDENTITY=\"$name\""
@@ -284,11 +362,11 @@ elif [ $1 == "ssh" ]; then
                 && cp ~/.ssh/$name ssh_identities/; then
                 echo "Copied keys to 'ssh_identities/$name' and 'ssh_identities/keys/$name.pub'"
             else
-                echo "Error: Failed to generate"
+                echo "Error: Failed to copy keys from ~/.ssh/ to ssh_identities/"
             fi
         fi
 
-        echo "Copy hosts (config) and ALL local keys except own to '~/.ssh'? (Y/n/config only)"
+        echo "Copy hosts (file 'config') and ALL public keys in ssh_identities/keys/ except own to '~/.ssh'? (Y/n/config only)"
         echo "Warning: This will overwrite existing files"
         read move_to_ssh
         if [ -z $move_to_ssh ] || [ $move_to_ssh == "n" ] || [ $move_to_ssh == "N" ]; then
@@ -337,11 +415,11 @@ elif [ $1 == "setup" ]; then
     sudo chmod +x /usr/local/bin/rx_copy.bash
     
     for service in $(ls system\ services/ | grep .service); do
-        cp system\ services/$service system\ services/$service.tmp
-        sed -i "s/User=own_name/User=$MESH_IDENTITY/" system\ services/$service.tmp
+        cp system\ services/$service system\ services/$service.tmp # create copy
+        sed -i "s/User=own_name/User=$MESH_IDENTITY/" system\ services/$service.tmp # replace placeholder
+        sudo mv system\ services/$service.tmp /etc/systemd/system/$service # move unit file
     done
-    sudo mv system\ services/*.service.tmp /etc/systemd/system/
-    sudo cp system\ services/*.timer /etc/systemd/system/
+    sudo cp system\ services/*.timer /etc/systemd/system/ # move timers
     
     sudo systemctl daemon-reload
     

@@ -47,6 +47,9 @@ if [ $COPY_TO_SSH == true ]; then
                 if [ -f $SW_SETUP/ssh_identities/keys/$name.pub ]; then
                     ssh-copy-id -i $SW_SETUP/ssh_identities/keys/$name.pub $MESH_IDENTITY@$MESH_IP
                     # used to add public keys to '~/.ssh/' and '~/.ssh/authorized_keys/'
+                    
+                    # instead of using ssh-copy-id to copy keys to different hosts, this service 
+                    # copies locally existing keys to itself, requiring only this host's password
                 fi
             done
             # easier (but less safe): for pub_key in $(ls $SW_SETUP/ssh_identities/keys/); do...
