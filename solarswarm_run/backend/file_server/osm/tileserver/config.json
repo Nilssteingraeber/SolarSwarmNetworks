@@ -1,0 +1,43 @@
+{
+  "options": {
+    "cors": true,
+    "formatOptions": {
+      "jpeg": {
+        "quality": 80
+      },
+      "webp": {
+        "quality": 90
+      }
+    },
+    "domains": [
+      "localhost:8080",
+      "127.0.0.1:8080"
+    ],
+    "paths": {
+      "root": "",
+      "fonts": "fonts/"
+    }
+  },
+  "data": {
+    "NRW-Tiles": {
+      "mbtiles": "nordrhein-westfalen.mbtiles",
+      "encoding": "mapbox",
+      "tileSize": 512,
+      "sparse": true
+    }
+  },
+  "styles": {
+    "basic": {
+      "style": "style.json",
+      "tilejson": {
+        "type": "overlay",
+        "bounds": [
+          5.51269,
+          50.3209,
+          9.46831,
+          52.5335
+        ]
+      }
+    }
+  }
+}
