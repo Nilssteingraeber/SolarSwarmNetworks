@@ -8,6 +8,9 @@
 
 services:
   base_robot:
+    # should run on all robots
+    # to excluse nodes from this, change those nodes' availability to drain
+    # or introduce a new label and constraint to differentiate between robot and non-robot
     build:
       context: ./base_robot
       dockerfile: base_robot.Dockerfile
@@ -18,9 +21,6 @@ services:
     deploy:
       mode: global
       max_replicas_per_node: 1
-      #placement:
-        #constraint:
-          #- node.labels.<Label> [== <Wert> | != <Wert>]
   
   data_sink:
     build:
@@ -46,7 +46,7 @@ services:
       replicas: 1
       placement:
         constraint:
-          - node.labels.is_data_sink # should only be given once (same host which runs web and db)
+          - node.labels.has_data_sink # should only be given once (same host which runs web and db)
   
   web: # TODO
     build:
@@ -69,7 +69,7 @@ services:
       replicas: 1
       placement:
         constraint:
-          - node.labels.is_data_sink # should only be given once (same host which runs data_sink and db)
+          - node.labels.has_data_sink # should only be given once (same host which runs data_sink and db)
 
   db: # TODO
     image: postgres:15
@@ -89,7 +89,7 @@ services:
       replicas: 1
       placement:
         constraint:
-          - node.labels.is_data_sink # should only be given once (same host which runs data_sink and web)
+          - node.labels.has_data_sink # should only be given once (same host which runs data_sink and web)
   
   fibonacci_example:
     build:

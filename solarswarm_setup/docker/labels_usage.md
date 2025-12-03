@@ -1,4 +1,4 @@
-Create a file `<MESH_IDENTITY>.labels` in this directory and assing matching labels. These labels will be read from the file by the leader (`docker_leader` service) when a node joins a swarm and subsequently assigned to the node using `docker node update --label-add <label>`. Labels can also be added or removed manually.
+Create a file `<MESH_IDENTITY>.labels` in this directory and assing matching labels. These labels will be read from the file by the leader (`docker_leader` service) when a node joins a swarm and is subsequently assigned to the node using `docker node update --label-add <label>`. Labels can also be added or removed manually. This list contains the labels we use for our essential services and testing, but new labels can be introduced at will.
 
 These labels will be used to put constraints on docker swarm services to limit which nodes can start them. Note that constraints either (a) check if a label exists, (b) check if the label's value equals another value (`==`), or (c) check if the label's value does not equal another value (`!=`). Multiple constraints are connected with a logical AND, meaning all have to be true for a service to be started on a node.
 
@@ -39,3 +39,6 @@ These labels will be used to put constraints on docker swarm services to limit w
 - group_f
 - group_g
 - group_h
+
+### User-Defined
+Add custom labels here

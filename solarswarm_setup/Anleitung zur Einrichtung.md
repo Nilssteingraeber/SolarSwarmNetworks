@@ -29,7 +29,7 @@ Um Schlüssel zur Anmeldung verwenden zu können, muss in `/etc/ssh/sshd_config`
 
 ***Passwort.*** Einheitliche Passwörter wie "solarswarm-a" für den Nutzer `alfa` können dabei helfen, anderen Personen die Arbeit mit verschiedenen Robotern zu erleichtern. Ungeachtet dessen, ob individuelle Passwörter, ein Schema oder schlicht das selbe Passwort für alle Roboter eingesetzt werden, sollte gewährleistet sein, dass spätere Studierende oder Personal des Instituts für Elektromobilität an der Hochschule Bochum unbeschwert an den Robotern arbeiten können.
 
-> Hinweis: Da nicht immer alle Roboter gleichzeitig eingeschaltet sind, ersparen wir uns automatische Updates dieser Listen. Mit `service_helper.bash send <hosts|keys>` können ... an alle **eingeschalteten** und **erreichbaren** Roboter, die auf der **lokalen** Liste `names_with_ip` vorhanden sind.
+> Hinweis: Da nicht immer alle Roboter gleichzeitig eingeschaltet sind, ersparen wir uns automatische Updates dieser Listen. Mit `service_helper.bash send <hosts|keys>` können Hosts aus `ssh_identities/` und öffentliche Schlüssel aus `ssh_identities/keys/` an alle **eingeschalteten** und **erreichbaren** Roboter, die auf der **lokalen** Liste `names_with_ip` vorhanden sind, geschickt werden. Sie werden auf dem Zielhost in `rx/` abgelegt und von dem Service rx_copy geprüft und an die richtige Stelle verschoben.
 
 Mit Root-Rechten, füge einen Sudo-Nutzer (auch "Systemverwalter") mit einem Username aus`ssh_identities/names` hinzu, der noch nicht verwendet wird. Dies kann in den Systemeinstellungen unter "Benutzer" oder in der Konsole erledigt werden:
 ```bash
@@ -44,12 +44,12 @@ Um den Betrieb der Roboter angenehmer zu machen, ist es ratsam, "Automatische An
 - Headless/Server: https://ostechnix.com/ubuntu-automatic-login/
 
 ## Variablen und Labels einrichten
-Drei wichtige Umgebungsvariablen müssen Systemweit definiert werden und Systemstarts überstehen: WLANDEV, MESH_IDENTITY und MESH_IP. MESH_IDENTITY und MESH_IP entsprechen dem bestimmten Nutzernamen und der dazugehörigen IP-Adresse. WLANDEV entspricht einem gültigen, WLAN-fähigen Netzwerk-Interface (alle einsehbar mit `ip link`). Wlan-Interfaces fangen üblicherweise mit "wlan" oder "wl" an (üblich ist "wlan0"). Die Intel NUCs verwenden die Bezeichnung "wlp0s20f3".
+Drei wichtige Umgebungsvariablen müssen Systemweit definiert werden und Systemstarts überstehen: WLANDEV, MESH_IDENTITY und MESH_IP. MESH_IDENTITY und MESH_IP entsprechen dem bestimmten Nutzernamen und der dazugehörigen IP-Adresse. WLANDEV entspricht einem gültigen, WLAN-fähigen Netzwerk-Interface (einsehbar mit `ip link`). Wlan-Interfaces fangen üblicherweise mit "wlan" oder "wl" an (üblich ist "wlan0"). Die Intel NUC Mini-PCs verwenden die Bezeichnung "wlp0s20f3".
 
-`service_helper.bash` hilft dabei, die Umgebungsvariablen zu setzen. WLANDEV kann mit `service_helper.bash wlandev [WLANDEV]` und MESH_IDENTITY und -IP mit `service_helper.bash ssh [Nutzername]` angegeben werden. Ohne optionalen Parameter wird eine Eingabe verlangt. MESH_IP wird aus `names_with_ip` vom Namen abgeleitet. `ssh` generiert zusätzlich ein SSH-Schlüsselpaar für Nutzername und IP.
+`service_helper.bash` hilft dabei, die Umgebungsvariablen zu setzen. WLANDEV kann mit `service_helper.bash wlandev [WLANDEV]` und MESH_IDENTITY und -IP mit `service_helper.bash ssh [Nutzername]` gesetzt werden. Ohne optionalen Parameter wird eine Eingabe verlangt. MESH_IP wird aus `ssh_identities/names_with_ip` vom Namen abgeleitet. `ssh` generiert zusätzlich ein SSH-Schlüsselpaar für Nutzername und IP.
 
 ## SSH einrichten und verwalten
-Für SSH relevante Dateien sind in `ssh_identities/` enthalten und werden hier erklärt. Das Verzeichnis `keys` enthält alle öffentlichen Schlüssel *anderer* Roboter oder Hosts. Die Datei `config` enthält alle SSH-Hosts und muss um weitere Hosts ergänzt werden, wenn `names` und `names_with_ip` neue Einträge erhalten. MESH_IDENTITY wird für Host, User und die Schlüsselnamen und MESH_IP für HostName verwendet:
+Für SSH relevante Dateien sind in `ssh_identities/` enthalten und werden hier erklärt. Das Unterverzeichnis `keys/` enthält alle öffentlichen Schlüssel bekannter Roboter oder Hosts. Die in `ssh_identities/` enthaltene Datei `config` enthält alle SSH-Hosts und muss um weitere Hosts ergänzt werden, wenn `names` und `names_with_ip` neue Einträge erhalten. Ohne einen gültigen Eintrag in `config` können die Skripte den Host nicht erreichen, da sie Hostnamen beispielsweise für scp verwenden. MESH_IDENTITY wird für Host, User und die Schlüsselnamen und MESH_IP für HostName verwendet:
 ```
     Host example_name
             HostName 196.168.1.100
@@ -57,19 +57,22 @@ Für SSH relevante Dateien sind in `ssh_identities/` enthalten und werden hier e
             IdentityFile ~/.ssh/example_name.pub
 ```
 
+> Hinweis: Die in `config` definierten Hosts gelten nur für SSH. Um diese Hosts auch für andere Programme gültig zu machen, müssen sie in `/etc/hosts` inkludiert werden. In diesem Beispiel ist eine Zeile `196.168.1.100 example_name` erforderlich.
+
 Namen und IP-Adressen in `config`, `names` und `names_with_ip` müssen sich stets decken. Hosts sollten in `~/ssh_identities/` und in `~/.ssh/` ihren privaten Schlüssel (für alfa beispielsweise `alfa`) und in `~/ssh_identities/keys` und in `~/.ssh` alle gültigen öffentlichen Schlüssel aller anderen Hosts (`bravo.pub`, `charlie`, ...) haben. Der private und öffentliche Schlüssel liefen im Setup-Verzeichnis an verschiedenen Stellen, da `keys/` als Ziel von `service_helper.bash send keys` gedacht ist und Dateien darin überschrieben werden können. Auch werden Schlüssel an zwei Stellen aufbewahrt, um den Austausch später leichter anpassen zu können.
 
-Mit `service_helper.bash send <keys | hosts>` können entweder alle Schlüssel (Endung `.pub`) aus `ssh_identities/keys/` oder `config`, `names` und `names_with_ip` aus `ssh_identities/` auf alle **derzeitig erreichbaren** Hosts kopiert werden.
+Mit `service_helper.bash send <keys | hosts>` können entweder alle Schlüssel (Endung `.pub`) aus `ssh_identities/keys/` oder `config`, `names` und `names_with_ip` aus `ssh_identities/` auf alle **derzeit erreichbaren** Hosts kopiert werden.
 
 
 
-## service_helper.bash und Services ### UNFINISHED/TODO ###
+# Bausstelle!
+-- service_helper.bash und Services ---
 Wie bedienen? Welche Funktionen? Welche Systemd Services?
 
-## Erweiterung ### TODO
+--- Erweiterung --- TODO
 Wie erweitern? Wie neue Systemd Services, ROS2 Nodes oder Docker Services hinzufüen?
 
-### clipboard
+--- clipboard ---
 Ausführen von `service_helper.bash`... ohne Parameter Anleitung... zuerst mit `ip link` WLANDEV herausfinden und mit `service_helper.bash wlandev` festlegen... Im Voraus Identität für den Roboter festlegen... mit `service_helper.bash ssh` festlegen, um MESH_IDENTITY und MESH_IP festzulegen...
 `service_helper.bash setup`
 
@@ -80,10 +83,10 @@ Das Verzeichnis `system services/` beinhaltet drei Services: *batman_adv_setup* 
 > Hinweis: *batman_adv_setup* und *iw_dump* erfordern das Anlegen einer Umgebungsvariablen `WLANDEV`, welche ein gültiges Wlan-Interface nennen sollte. Mit `ip link` lassen sich Netzwerk-Interfaces anzeigen. Wlan-Interfaces fangen üblicherweise mit "wlan" oder "wl" an (üblich ist "wlan0"). Die Intel NUCs verfügen über "wlp0s20f3". Mit `sudo bash service_helper.bash wlandev` kann für eine angegebene Bezeichnung eine permanente Umgebungsvariable in `/etc/environment` angelegt werden. Sie wird überschrieben, falls bereits eine hinterlegt wurde.
 
 
-## Dockerd Labels festlegen
+--- Dockerd Labels festlegen ---
 Docker Swarm Services sollen später nur auf bestimmten Rechnern laufen, um leistungsschwächere Roboter nicht zu überlasten, auf systemspezifische Eingenschaften wie CPU-Architekturen zu berücksichtigen oder Daten auf dem Roboter vorauszusetzen. Beispielsweise ist es nur sinnig für einen Roboter, einen Service zum Ausliefern von Kartendaten zu starten, wenn er diese Daten lokal hat.
 
-## Docker Join-Tokens austauschen
+--- Docker Join-Tokens austauschen ---
 Problem: Wie viele Manager gibt es im Schwarm? Sind sie außer Reichweite oder ausgeschaltet?
 
 Lösungsansatz: Roboter holen sich nach Start Tokens von anderen Hosts und treten als Worker bei. Der Leader promotiert bis zu 5 Manager und pingt diese regelmäßig an. Wenn sie länger nicht erreicht werden können, werden sie auf eine demotion-Liste verschoben und bei nächster Gelegenheit demotet und von der demotion-Liste entfernt. Ein anderer Worker wird währenddessen promotet.
@@ -112,4 +115,4 @@ Sonst
     docker_init.service sucht in docker/ nach einem tokens
     betritt entweder als 
 
-# Weitere Roboter hinzufügen
+--- Weitere Roboter hinzufügen ---
