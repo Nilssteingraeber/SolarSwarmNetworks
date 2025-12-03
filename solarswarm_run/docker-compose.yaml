@@ -48,48 +48,58 @@ services:
         constraint:
           - node.labels.has_data_sink # should only be given once (same host which runs web and db)
   
-  web: # TODO
-    build:
-      context: ./data_sink
-      dockerfile: backend.Dockerfile
-    container_name: fastapi_app
-    networks:
-      - internal
-    ports:
-      - "8001:8000"
-    depends_on:
-      - db
+  db:
+    image: postgres:13
     environment:
-      - DATABASE_URL=postgresql://postgres:securepassword@db:5432/rosData
-    volumes:
-      - ./backend:/app
-      - ./logs/:/tmp/logs/
-    deploy:
-      mode: replicated
-      replicas: 1
-      placement:
-        constraint:
-          - node.labels.has_data_sink # should only be given once (same host which runs data_sink and db)
-
-  db: # TODO
-    image: postgres:15
-    container_name: postgres_db
-    environment:
+      POSTGRES_DB: rosData
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: securepassword
-      POSTGRES_DB: rosData
-    networks:
-      - internal
     ports:
-      - "5432:5432"
+      - "5173:5173"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     deploy:
       mode: replicated
       replicas: 1
       placement:
         constraint:
           - node.labels.has_data_sink # should only be given once (same host which runs data_sink and web)
+
+
+  backend:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:securepassword@db:5432/rosData
+      ROS_DISTRO: jazzy
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./logs/:/tmp/logs/
+    # Für Development mit Auto-Reload
+    command: >
+      bash -lc "
+        source /opt/ros/jazzy/setup.bash && 
+        cd /app && 
+        uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+      "
+    # network_mode: host
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraint:
+          - node.labels.has_data_sink # should only be given once (same host which runs data_sink and db)
   
   fibonacci_example:
     build:

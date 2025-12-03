@@ -1,0 +1,38 @@
+[2.369s] Invoking command in '/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/src/turtle_subscriber': PYTHONPATH=/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/turtle_subscriber build --build-base /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/build install --record /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/install.log --single-version-externally-managed install_data
+[2.530s] running egg_info
+[2.530s] creating ../../build/turtle_subscriber/turtle_subscriber.egg-info
+[2.533s] writing ../../build/turtle_subscriber/turtle_subscriber.egg-info/PKG-INFO
+[2.533s] writing dependency_links to ../../build/turtle_subscriber/turtle_subscriber.egg-info/dependency_links.txt
+[2.534s] writing entry points to ../../build/turtle_subscriber/turtle_subscriber.egg-info/entry_points.txt
+[2.534s] writing requirements to ../../build/turtle_subscriber/turtle_subscriber.egg-info/requires.txt
+[2.534s] writing top-level names to ../../build/turtle_subscriber/turtle_subscriber.egg-info/top_level.txt
+[2.534s] writing manifest file '../../build/turtle_subscriber/turtle_subscriber.egg-info/SOURCES.txt'
+[2.553s] reading manifest file '../../build/turtle_subscriber/turtle_subscriber.egg-info/SOURCES.txt'
+[2.553s] adding license file 'LICENSE'
+[2.554s] writing manifest file '../../build/turtle_subscriber/turtle_subscriber.egg-info/SOURCES.txt'
+[2.555s] running build
+[2.555s] running build_py
+[2.555s] creating /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/build
+[2.557s] creating /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/build/lib
+[2.557s] creating /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/build/lib/turtle_subscriber
+[2.558s] copying turtle_subscriber/__init__.py -> /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/build/lib/turtle_subscriber
+[2.558s] copying turtle_subscriber/turtle_pose_subscriber.py -> /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/build/lib/turtle_subscriber
+[2.558s] running install
+[2.561s] running install_lib
+[2.572s] creating /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages/turtle_subscriber
+[2.572s] copying /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/build/lib/turtle_subscriber/__init__.py -> /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages/turtle_subscriber
+[2.572s] copying /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/build/lib/turtle_subscriber/turtle_pose_subscriber.py -> /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages/turtle_subscriber
+[2.573s] byte-compiling /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages/turtle_subscriber/__init__.py to __init__.cpython-312.pyc
+[2.573s] byte-compiling /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages/turtle_subscriber/turtle_pose_subscriber.py to turtle_pose_subscriber.cpython-312.pyc
+[2.573s] running install_data
+[2.573s] creating /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/share/ament_index
+[2.573s] creating /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/share/ament_index/resource_index
+[2.573s] creating /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/share/ament_index/resource_index/packages
+[2.573s] copying resource/turtle_subscriber -> /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/share/ament_index/resource_index/packages
+[2.573s] copying package.xml -> /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/share/turtle_subscriber
+[2.573s] running install_egg_info
+[2.584s] Copying ../../build/turtle_subscriber/turtle_subscriber.egg-info to /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages/turtle_subscriber-0.0.0-py3.12.egg-info
+[2.585s] running install_scripts
+[2.657s] Installing subscriber script to /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/turtle_subscriber
+[2.660s] writing list of installed files to '/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/install.log'
+[2.677s] Invoked command in '/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/src/turtle_subscriber' returned '0': PYTHONPATH=/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/turtle_subscriber build --build-base /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/build install --record /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/install.log --single-version-externally-managed install_data
