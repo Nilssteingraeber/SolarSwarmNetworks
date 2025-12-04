@@ -1,4 +1,4 @@
-# System
+# Einrichtung des Systems
 ## Voraussetzungen
 Dieses Verzeichnis beinhaltet alle notwendigen Dateien für das Einrichten eines Roboters. Ein Roboter ist ein WLAN-fähiger Maschine mit Linux (Ubuntu) als Betriebssystem. Wegen der Anforderungen an dieses Projekt werden andere Distributionen oder ältere Versionen als Ubuntu 24.04 nicht getestet. Der Roboter oder Mock-Roboter sollte WLAN-fähig sein, eine aktuelle Docker Installation besitzen und für das Setup eine Internetverbindung haben. Für den Betrieb in einem Ad-hoc-Netzwerk wird zu dem eine Netzwerkkarte benötigt, die den Ad-hoc Modus (IBSS) unterstützt. Geprüft werden kann die verfügbare mit dem Befehl `iw list | grep -A 10 "Supported interface modes"`.
 
@@ -8,20 +8,12 @@ Es sollte bekannt sein, welche Roboter bereits welche Namen und IP-Adressen, die
 
 Zum Einrichten des Ad-hoc Modus' werden zwei Kernel-Module (standardmäig vorinstalliert) und drei zusätzliche Tools benötigt, sowie ein weiteres zum Hosten eines SSH-Servers. Darunter ist `avahi-autoipd` optional und wird nur verwendet, wenn `batman_adv_setup.bash` manuell ausgeführt wird und keine statische IP-Adresse festgelegt wurde. Mehr dazu später.
 ```bash
-    sudp apt-get update
-    sudo apt-get install iw
-    sudo apt-get install batctl
-    sudo apt-get install avahi-autoipd
-    # sudo apt-get install openssh-client # usually pre-installed
-    sudo apt-get install openssh-server
-```
-
-Um Schlüssel zur Anmeldung verwenden zu können, muss in `/etc/ssh/sshd_config` die Zeile `#PubkeyAuthentification yes` gefunden und das "#" entfernt werden.
-```bash
-    sudo nano /etc/ssh/sshd_config # delete '#' in editor
-    
-    # or to remove automatically:
-    sudo sed -i -e "s/#PubkeyAuthentification/PubkeyAuthentification/" /etc/ssh/sshd_config
+sudp apt-get update
+sudo apt-get install iw
+sudo apt-get install batctl
+sudo apt-get install avahi-autoipd
+# sudo apt-get install openssh-client # usually pre-installed
+sudo apt-get install openssh-server
 ```
 
 ## Nutzer einrichten
@@ -33,8 +25,8 @@ Um Schlüssel zur Anmeldung verwenden zu können, muss in `/etc/ssh/sshd_config`
 
 Mit Root-Rechten, füge einen Sudo-Nutzer (auch "Systemverwalter") mit einem Username aus`ssh_identities/names` hinzu, der noch nicht verwendet wird. Dies kann in den Systemeinstellungen unter "Benutzer" oder in der Konsole erledigt werden:
 ```bash
-    sudo adduser <Username>
-    sudo adduser <Username> sudo
+sudo adduser <Username>
+sudo adduser <Username> sudo
 ```
 Referenz: https://help.ubuntu.com/community/RootSudo#Allowing_other_users_to_run_sudo
 
@@ -43,7 +35,7 @@ Um den Betrieb der Roboter angenehmer zu machen, ist es ratsam, "Automatische An
 - Light Desktop Manager (lightdm): https://askubuntu.com/a/51087
 - Headless/Server: https://ostechnix.com/ubuntu-automatic-login/
 
-## Variablen und Labels einrichten
+## Variablen einrichten
 Drei wichtige Umgebungsvariablen müssen Systemweit definiert werden und Systemstarts überstehen: WLANDEV, MESH_IDENTITY und MESH_IP. MESH_IDENTITY und MESH_IP entsprechen dem bestimmten Nutzernamen und der dazugehörigen IP-Adresse. WLANDEV entspricht einem gültigen, WLAN-fähigen Netzwerk-Interface (einsehbar mit `ip link`). Wlan-Interfaces fangen üblicherweise mit "wlan" oder "wl" an (üblich ist "wlan0"). Die Intel NUC Mini-PCs verwenden die Bezeichnung "wlp0s20f3".
 
 `service_helper.bash` hilft dabei, die Umgebungsvariablen zu setzen. WLANDEV kann mit `service_helper.bash wlandev [WLANDEV]` und MESH_IDENTITY und -IP mit `service_helper.bash ssh [Nutzername]` gesetzt werden. Ohne optionalen Parameter wird eine Eingabe verlangt. MESH_IP wird aus `ssh_identities/names_with_ip` vom Namen abgeleitet. `ssh` generiert zusätzlich ein SSH-Schlüsselpaar für Nutzername und IP.
@@ -51,10 +43,10 @@ Drei wichtige Umgebungsvariablen müssen Systemweit definiert werden und Systems
 ## SSH einrichten und verwalten
 Für SSH relevante Dateien sind in `ssh_identities/` enthalten und werden hier erklärt. Das Unterverzeichnis `keys/` enthält alle öffentlichen Schlüssel bekannter Roboter oder Hosts. Die in `ssh_identities/` enthaltene Datei `config` enthält alle SSH-Hosts und muss um weitere Hosts ergänzt werden, wenn `names` und `names_with_ip` neue Einträge erhalten. Ohne einen gültigen Eintrag in `config` können die Skripte den Host nicht erreichen, da sie Hostnamen beispielsweise für scp verwenden. MESH_IDENTITY wird für Host, User und die Schlüsselnamen und MESH_IP für HostName verwendet:
 ```
-    Host example_name
-            HostName 196.168.1.100
-            User example_name
-            IdentityFile ~/.ssh/example_name.pub
+Host example_name
+        HostName 196.168.1.100
+        User example_name
+        IdentityFile ~/.ssh/example_name.pub
 ```
 
 > Hinweis: Die in `config` definierten Hosts gelten nur für SSH. Um diese Hosts auch für andere Programme gültig zu machen, müssen sie in `/etc/hosts` inkludiert werden. In diesem Beispiel ist eine Zeile `196.168.1.100 example_name` erforderlich.
@@ -63,16 +55,74 @@ Namen und IP-Adressen in `config`, `names` und `names_with_ip` müssen sich stet
 
 Mit `service_helper.bash send <keys | hosts>` können entweder alle Schlüssel (Endung `.pub`) aus `ssh_identities/keys/` oder `config`, `names` und `names_with_ip` aus `ssh_identities/` auf alle **derzeit erreichbaren** Hosts kopiert werden.
 
+## Docker Node Labels
+Docker Swarm Services sollen später nur auf bestimmten Rechnern laufen, um leistungsschwächere Roboter nicht zu überlasten, systemspezifische Eingenschaften wie CPU-Architekturen zu berücksichtigen und Daten auf dem Roboter vorauszusetzen. Beispielsweise ist es nur sinnvoll für einen Roboter, einen Service zum Ausliefern von Kartendaten zu starten, wenn er eine lokale Kopie dieser Daten besitzt.
 
+Welche Labels eine Docker Node (ein einzelner Host in dem Schwarm) haben muss, um einen Swarm Service replizieren zu können, wird in `~/solarswarm_run/docker-compose.yaml` festgelegt. Die von uns verwendeten Labels werden in `docker/labels_usage.md` aufgelistet. Hier ein verkürztes Beispiel für einen Service:
+```yaml
+fibonacci_example:
+    # ...
+    deploy:
+        mode: replicated
+        replicas: 2
+        max_replicas_per_node: 1
+        placement:
+            constraint:
+            - node.labels.ram_ge_8gb # <- das Label ram_ge_8gb muss vorhanden sein
+            - node.labels.architecture=x86_64 # <- das Label architecture muss den Wert x86_64 haben
+```
+> Hinweis: Werden mehrere Constraints eingetragen, werden die Wahrheitswerte aller Einträge mit einem logischen UND verbunden. Dieser Service startet nur auf Nodes, die beide Labels (mit den selben Werten) besitzen.
 
-# Bausstelle!
--- service_helper.bash und Services ---
-Wie bedienen? Welche Funktionen? Welche Systemd Services?
+Labels können einer Node erst nach Beitritt in einen Schwarm und nur durch einen Manager zugewiesen werden. Damit eine Node selbst verkündet, welche Labels sie von einem Manager zugewiesen bekommt, soll sie eine Datei mit ihren gewünschten Labels bereitstellen. Dazu muss in `docker/` eine Datei, benannt nach dem Hostnamen mit der Endung `.labels` (etwa `bravo.logs`), erstellt und zeilenweise mit Labels gefüllt werden. `docker/example_name.labels` bietet ein Beispiel. `docker/labels_usage.md` einhält weitere Hinweise für die Vergabe von Labels und sollte um benutzerdefinierte Labels erweitert werden, damit sie stets als Katalog dienen kann. Dabei ist zu bedenken, dass die Kataloge der Roboter, die bereits eingerichtet wurden, aktualisiert werden.
+Sobald ein Roboter den Systemd Service *docker_init* (Skript `system\ services/docker_init.bash`) startet und beitritt, wird seine Availability auf "drain" gestzt, wordurch er keine Services repliziert. Er versucht wiederholt, seine Labels-Datei an die Leader-Node zu senden, welche für eine valide Labels-Datei die darin stehenden Labels dem Roboter verleiht und sine Availability auf "active" setzt. Dadurch ist er integriert und kann Services replizieren. Eine Konstante in `docker_init.bash` kann verändert werden, um trotz fehlender Labels-Datei beizutreten:
+```bash
+IGNORE_LABELS_MISSING=false # falls true, wird eine leere <Hostname>.labels erzeugt, insofern keine vorhanden ist
+```
 
---- Erweiterung --- TODO
+## Systemd Services und service_helper.bash
+Das Skript `service_helper.bash` übernimmt viele repetative Aufgaben und hilft beim Einrichten, Warten und Entfernen wichtiger Dateien, Variablen und Systemd Services. Die Ausführung erfolgt (von diesem Verzeichnis aus) `bash service_helper.bash` oder `./service_helpeer.bash`. Da viele Programmaufrufe innerhalb des Skripts administrative Rechte benötigen, wird anfangs eine Warnung angezeigt und zu einer Bestätigung der Ausführung aufgerufen. Für die Sicherheit ist zu beachten, dass das Passwort eines Sudo-Users nur einmal abgefragt wird und alle weiteren Programme, die vorneran ein `sudo` verzeichnen, ohne weitere Abfragen ausgeführt werden. So kann jede fremde Zeile Code mit Sudo-Rechten ausgeführt werden, wenn das Skript mit diesen Rechten ausgeführt wird.
+
+Das Skript gibt ohne übergebene Parameter eine Übersicht der möglichen Optionen und Parameter aus. Optionen und Parameter werden durch Leerzeichen voneinenader und von dem Programmnamen vor der Auführung angegeben. Zunächst ein paar Beispiele:
+```bash
+bash service_helper.bash wlandev wlp0s20f3 # setzt WLANDEV
+bash service_helper.bash ssh bravo # MESH_IDENTITY auf bravo und MESH_IP auf 192.168.1.2
+bash service_helper.bash setup # bereitet Systemd Services vor
+bash service_helper.bash status # zeigt an, welche Variablen und Dateien vorhanden sind
+```
+
+## Bestimmen eines Leaders
+Der Leader (Anführer) in einem Docker Swarm ist derjenige Manager, der den Schwarm initiiert hat. Er stellt Join-Tokens aus, mit denen andere Hosts als Worker- oder Manager-Nodes beitreten können. Fällt ein Leader aus und wird das Quorum dadurch nicht zerstört, wird ein weiterer Manager zum Leader ernannt. Für unseren Schwarm übernimmt der Leader zusätzliche Aufgauben wie das Zuweisen der Node Labels nach Beitritt oder das Ernennen und Entfernen von Managern zur Einhaltung einer in `docker_leader.bash` als Konstante `IDEAL_MANAGER_COUNT` angegebenen Anzahl. Nur der Leader darf den Systemd Service *docker_leader* ausführen.
+
+Ob ein Roboter Leader sein soll, muss er bereits vor dem Start von *docker_init* wissen. Dazu soll er im Verzeichnis `docker/` eine Datei `leader` mit seinem eigenen Namen erhalten. Beispielsweise erhält Host alfa eine Datei `leader`, die nur "alfa" beinhaltet. Alle weiteren Roboter versuchen nach dem Start von *docker_init*, den Leader zu finden und seinem Schwarm beizutreten. Dazu werden `leader` und `worker_token` vom Leader oder anderen erreichbaren Hosts geholt.
+
+## Logging
+Einige Systemd Services haben eigene Konstanten `LOG_OUT`, welche das Ziel für Logs bestimmt. Diese Konstante kann je Service angepasst werden. Generell ist für Logs von Programmen in `solarswarm_setup` `solarswarm_setup/logs` und Docker Services in `solarswarm_run` `solarswarm_run/logs/` vorgesehen.
+
+Mit `bash service_helper.bash collect logs <all | hostname>` werden die Logs aus `solarswarm_setup/logs` und `solarswarm_run/logs` von allesn erreichbaren Hosts in `~/solarswarm_setup/rx/logs/` des lokalen Hosts kopiert. `rx/logs/` hat die Unterverzeichnisse `setup/` und `run/`, in denen Verzeichnisse mit dem Hostnamen der Quelle angelegt und befüllt werden.
+
+v----- TODO -----v
+
+# Nutzung
+## Starten
+## Problembehandlung
+## Beenden
+## Sammeln der Logs
+
+# Erweiterung
 Wie erweitern? Wie neue Systemd Services, ROS2 Nodes oder Docker Services hinzufüen?
+Kopie von custom_interfaces in solarswarm_run/ros_ws synchronisieren und neu bauen
+## Hinzufügen neuer Hostnamen und IP-Adressen
+## Integrieren eines Systemd Services
+Speicherort für Unit-File und Bash-Skript
+Integrieren in services_helper.bash
+    Hilfe erweitern
+    If-elif-Struktur erweitern (erst Struktur ohne Blöcke zeigen)
+## Hinzufügen neuer Docker Services oder ROS2 Nodes
+Verweis auf `~/solarswarm_run/Anleitung\ zur\ Erweiterung.md`
+## Hinzufügen neuer Docker Node Labels
 
---- clipboard ---
+
+# Zwischenablage
 Ausführen von `service_helper.bash`... ohne Parameter Anleitung... zuerst mit `ip link` WLANDEV herausfinden und mit `service_helper.bash wlandev` festlegen... Im Voraus Identität für den Roboter festlegen... mit `service_helper.bash ssh` festlegen, um MESH_IDENTITY und MESH_IP festzulegen...
 `service_helper.bash setup`
 
@@ -81,10 +131,6 @@ Das Verzeichnis `system services/` beinhaltet drei Services: *batman_adv_setup* 
 `service_helper.bash` hilt dabei, die Services auf einem Linux-System einzurichten. Das Skript informiert über gültige Parameter, wenn es ohne welche ausgeführt wird (etwa mit `bash service_helper.bash`). Zu beachten ist, dass das Skript für die meisten Befehle Root-Rechte benötigt. Daher vor der Ausführung sollte sichergestellt werden, dass nichts an diesem Skript oder den Services verändert wurde, was dem System schaden könnte.
 
 > Hinweis: *batman_adv_setup* und *iw_dump* erfordern das Anlegen einer Umgebungsvariablen `WLANDEV`, welche ein gültiges Wlan-Interface nennen sollte. Mit `ip link` lassen sich Netzwerk-Interfaces anzeigen. Wlan-Interfaces fangen üblicherweise mit "wlan" oder "wl" an (üblich ist "wlan0"). Die Intel NUCs verfügen über "wlp0s20f3". Mit `sudo bash service_helper.bash wlandev` kann für eine angegebene Bezeichnung eine permanente Umgebungsvariable in `/etc/environment` angelegt werden. Sie wird überschrieben, falls bereits eine hinterlegt wurde.
-
-
---- Dockerd Labels festlegen ---
-Docker Swarm Services sollen später nur auf bestimmten Rechnern laufen, um leistungsschwächere Roboter nicht zu überlasten, auf systemspezifische Eingenschaften wie CPU-Architekturen zu berücksichtigen oder Daten auf dem Roboter vorauszusetzen. Beispielsweise ist es nur sinnig für einen Roboter, einen Service zum Ausliefern von Kartendaten zu starten, wenn er diese Daten lokal hat.
 
 --- Docker Join-Tokens austauschen ---
 Problem: Wie viele Manager gibt es im Schwarm? Sind sie außer Reichweite oder ausgeschaltet?

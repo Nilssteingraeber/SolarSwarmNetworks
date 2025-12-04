@@ -184,6 +184,7 @@ else # is worker
     done
     
     # send labels to leader to be labelled and activated    
+    touch $LABELS_LOCATION
     while ! scp $SSH_TIMEOUT $HOST_CHECKING $LABELS_LOCATION $LEADER:$LABELS_TARGET; do
         echo "[docker_init] Failed to provide labels to leader $LEADER - trying again in 5 seconds" >>$LOG_OUT
         sleep 5

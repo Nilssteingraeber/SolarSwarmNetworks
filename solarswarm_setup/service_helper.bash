@@ -7,7 +7,7 @@ SSH_TIMEOUT="-o ConnectTimeout=1"
 
 HOST_CHECKING="-o StrictHostKeyChecking=no"
 # allow ssh connection to hosts without strict authorization (susceptible to MIT attacks)
-# change StrictHostKeyChecking to "yes" or make ariable empty for more security if CA was set up
+# change StrictHostKeyChecking to "yes" or make variable empty for more security if a CA was set up
 # StrictHostKeyChecking could be set in '/etc/ssh/ssh_config' instead, but it is easier to find here
 # note: docker_init.bash and docker_leader.bash also set this variable locally
 

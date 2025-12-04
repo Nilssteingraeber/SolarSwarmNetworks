@@ -2,7 +2,7 @@
 LEADER_CHECK_DELAY=30 # in seconds
 LEADER_PATIENCE=60 # LEADER_PATIENCE * LEADER_CHECK_DELAY total seconds
 # demotion after LEADER_PATIENCE failed pings
-MAX_MANAGER_COUNT=5
+IDEAL_MANAGER_COUNT=3
 SW_SETUP=/home/$MESH_IDENTITY/solarswarm_setup
 MANAGER_LIST=$SW_SETUP/docker/manager_list
 DEMOTION_LIST=$SW_SETUP/docker/demotion_list
@@ -173,7 +173,7 @@ while [ 0 ]; do
         fi
     done
 
-    # promote new hosts if below maximum count
+    # promote new hosts if below ideal count
     echo "[docker_leader] Checking for promotions..." >>$LOG_OUT
     node_ls=$(sudo docker node ls --filter "role=worker" \
         --filter "node.label=can_become_manager" \
@@ -182,7 +182,7 @@ while [ 0 ]; do
     for i in $(seq 1 $line_count); do
         # for each healthy worker: update current managers
         managers=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}} {{.Status}}")
-        if [ $(echo $managers | wc -l) -ge $MAX_MANAGER_COUNT ]; then # enough managers
+        if [ $(echo $managers | wc -l) -ge $IDEAL_MANAGER_COUNT ]; then # enough managers
             break
         fi
         
