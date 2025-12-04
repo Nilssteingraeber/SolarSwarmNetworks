@@ -1,11 +1,12 @@
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import os
+from urllib.parse import urlparse # Import for safe URL parsing
 
 # -------------------------------
 # Configuration
 # -------------------------------
-SERVE_DIR = "/app/data"
-PORT = 9005
+SERVE_DIR = "/app/terraindata"
+PORT = 9010
 
 class Debug404Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -21,11 +22,26 @@ class Debug404Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self):
-        # Build the absolute path of requested file
-        requested_path = os.path.join(SERVE_DIR, self.path.lstrip("/"))
+        
+        clean_path = urlparse(self.path).path
+        requested_path = os.path.join(SERVE_DIR, clean_path.lstrip("/"))
+        
+        print(f"Requested path: {self.path}") # Logs the original path
+        print(f"Cleaned path: {clean_path}") # Logs the path without the query string
+        
+        # If the file exists, we need to temporarily set self.path to the clean path
+        # so that the super().do_GET() method serves the correct file.
         if os.path.isfile(requested_path):
-            # File exists → serve normally
-            return super().do_GET()
+            # Temporarily replace self.path with the clean path for the super method
+            original_path = self.path
+            self.path = clean_path 
+            
+            try:
+                # File exists → serve normally
+                return super().do_GET()
+            finally:
+                # Restore the original path after serving (good practice)
+                self.path = original_path 
         else:
             # File missing or directory → return debug 404
             self.send_response(404, "Not Found")

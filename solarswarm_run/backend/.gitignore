@@ -1,2 +1,4 @@
 venv
 .venv
+file_server/osm/tileserver/fonts/*
+file_server/osm/tilemaker/*
