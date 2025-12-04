@@ -73,7 +73,7 @@ services:
 
   backend:
     build: 
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql://postgres:securepassword@db:5432/rosData
@@ -84,7 +84,7 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ./backend:/app
+      - ./backend/backend:/app
       - ./logs/:/tmp/logs/
     # Für Development mit Auto-Reload
     command: >
@@ -174,11 +174,11 @@ services:
   # Deutschland – Zero – Version 2.0
   # https://www.govdata.de/dl-de/zero-2-0
   three_d_server:
-    build: ./backend
+    build: ./backend/backend
     depends_on:
       - backend
     volumes:
-      - ./backend:/app
+      - ./backend/backend:/app
       - ./bigData/data:/app/data
     command: python -u ./file_server/3DServer.py
     ports:
@@ -193,11 +193,11 @@ services:
   ### Digital Elevation Model ###
   # © Bundesamt für Kartographie und Geodäsie (BKG), Datenlizenz Deutschland – Namensnennung – Version 2.0
   terrain_server:
-    build: ./backend
+    build: ./backend/backend
     depends_on:
       - backend
     volumes:
-      - ./backend:/app
+      - ./backend/backend:/app
       - ./bigData/dem/tiles:/app/terraindata
     command: python -u ./file_server/TerrainServer.py
     ports:
@@ -215,7 +215,7 @@ services:
     image: maptiler/tileserver-gl:latest
     volumes:
       - ./bigData/osm/:/osmdata/
-      - ./backend/file_server/osm/tileserver:/tileserver
+      - ./backend/backend/file_server/osm/tileserver:/tileserver
 
     ports:
       - "9015:9015"

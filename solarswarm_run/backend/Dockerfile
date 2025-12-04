@@ -1,21 +1,26 @@
-# backend/Dockerfile
-FROM python:3.11-slim
+FROM ros:jazzy-ros-base
 
+# Set working directory
 WORKDIR /app
 
-# Systemabhängigkeiten falls nötig (z.B. für Postgres client libs)
-RUN apt-get update && apt-get install -y build-essential gcc libpq-dev \
+# Install Python dependencies
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-colcon-common-extensions \
+    python3-rosdep \
     && rm -rf /var/lib/apt/lists/*
 
-# Abhängigkeiten kopieren und installieren
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python requirements
+COPY backend/requirements.txt .
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
-# App-Code kopieren (einschließlich 3DServer.py falls dort liegt)
-COPY . .
+# Copy application code
+COPY backend/ .
 
-# Port für uvicorn
+# Expose port
 EXPOSE 8000
 
-# Startbefehl (ändere falls notwendig)
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENV ROS_DISTRO=jazzy
+
+# Start command that sources ROS and starts FastAPI
+CMD ["bash", "-lc", "source /opt/ros/jazzy/setup.bash && cd /app && uvicorn main:app --host 0.0.0.0 --port 8000"]
