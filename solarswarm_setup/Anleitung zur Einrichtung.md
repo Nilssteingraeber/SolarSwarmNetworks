@@ -8,7 +8,7 @@ Es sollte bekannt sein, welche Roboter bereits welche Namen und IP-Adressen, die
 
 Zum Einrichten des Ad-hoc Modus' werden zwei Kernel-Module (standardmäig vorinstalliert) und drei zusätzliche Tools benötigt, sowie ein weiteres zum Hosten eines SSH-Servers. Darunter ist `avahi-autoipd` optional und wird nur verwendet, wenn `batman_adv_setup.bash` manuell ausgeführt wird und keine statische IP-Adresse festgelegt wurde. Mehr dazu später.
 ```bash
-sudp apt-get update
+sudo apt-get update
 sudo apt-get install iw
 sudo apt-get install batctl
 sudo apt-get install avahi-autoipd

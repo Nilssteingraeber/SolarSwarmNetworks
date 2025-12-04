@@ -144,7 +144,7 @@ collect() { # copy files from all reachable ssh hosts to local rx/
     sudo hostname $MESH_IDENTITY # set hostname
 
     if [ ! -z $1 ] && [ $1 == "logs" ]; then # copy logs
-        if [ -z $2 ]
+        if [ -z $2 ]; then
             echo "Error: Expected 'all' or a known name after logs"
             exit 1
         elif [ $2 == "all" ]; then

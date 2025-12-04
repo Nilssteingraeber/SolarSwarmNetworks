@@ -18,6 +18,9 @@ services:
     volumes:
       - /tmp/iw_dump/:/tmp/iw_dump/
       - ./logs/:/tmp/logs/
+    deploy:
+      mode: global
+      max_replicas_per_node: 1
   
   data_sink:
     build:
@@ -38,6 +41,12 @@ services:
       DB_PASSWORD: securepassword
       DB_HOST: db
       DB_PORT: "5432"
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.has_data_sink # should only be given once (same host which runs web and db)
   
   db:
     image: postgres:13
@@ -54,6 +63,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.has_data_sink # should only be given once (same host which runs data_sink and web)
 
 
   backend:
@@ -78,6 +93,13 @@ services:
         cd /app && 
         uvicorn main:app --host 0.0.0.0 --port 8000 --reload
       "
+    # network_mode: host
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.has_data_sink # should only be given once (same host which runs data_sink and db)
   
   fibonacci_example:
     build:
@@ -85,6 +107,13 @@ services:
       dockerfile: example_ros2_services.Dockerfile
     environment:
       - EXAMPLE_ROS2_SERVICE=fibonacci
+    deploy:
+      mode: replicated
+      replicas: 2
+      max_replicas_per_node: 1
+      placement:
+        constraints:
+          - node.labels.ram_ge8
   
   get_service_server_mac_example:
     build:
@@ -92,6 +121,8 @@ services:
       dockerfile: example_ros2_services.Dockerfile
     environment:
       - EXAMPLE_ROS2_SERVICE=get_service_server_mac
+    deploy:
+      mode: global
   
   int_avg_example:
     build:
@@ -99,6 +130,13 @@ services:
       dockerfile: example_ros2_services.Dockerfile
     environment:
       - EXAMPLE_ROS2_SERVICE=int_avg
+    deploy:
+      mode: replicated
+      replicas: 2
+      max_replicas_per_node: 1
+      placement:
+        constraints:
+          - node.labels.ram_ge8
   
   int_rng_example:
     build:
@@ -106,6 +144,13 @@ services:
       dockerfile: example_ros2_services.Dockerfile
     environment:
       - EXAMPLE_ROS2_SERVICE=int_rng
+    deploy:
+      mode: replicated
+      replicas: 2
+      max_replicas_per_node: 1
+      placement:
+        constraints:
+          - node.labels.ram_ge8
 
   str_to_lower_upper_example:
     build:
@@ -113,6 +158,13 @@ services:
       dockerfile: example_ros2_services.Dockerfile
     environment:
       - EXAMPLE_ROS2_SERVICE=str_to_lower_upper
+    deploy:
+      mode: replicated
+      replicas: 2
+      max_replicas_per_node: 1
+      placement:
+        constraints:
+          - node.labels.ram_ge8
 
 
 
@@ -131,6 +183,12 @@ services:
     command: python -u ./file_server/3DServer.py
     ports:
       - "9005:9005"
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.has_3d_map_data
 
   ### Digital Elevation Model ###
   # © Bundesamt für Kartographie und Geodäsie (BKG), Datenlizenz Deutschland – Namensnennung – Version 2.0
@@ -144,6 +202,12 @@ services:
     command: python -u ./file_server/TerrainServer.py
     ports:
       - "9010:9010"
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.has_2d_map_data
 
   ### OpenStreetMap-Data Server ###
   # TODO OSM-License
@@ -156,6 +220,12 @@ services:
     ports:
       - "9015:9015"
     command: ["-c", "/tileserver/config.json", "-p", "9015"]
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.has_2d_map_data
 
   ### Vue ###
   frontend:
@@ -176,6 +246,12 @@ services:
       - VITE_OSM_SERVER_PORT=9015
       # Edit: Chris' Backend URL
       - DB_URL=http://localhost:XXXX/
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.has_web
 
 volumes:
   pgdata:
