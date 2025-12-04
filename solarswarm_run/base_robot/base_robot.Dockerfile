@@ -1,6 +1,6 @@
 FROM ros:jazzy
-COPY ../solarswarm/ /home/ubuntu/solarswarm/
-COPY base_robot_init.bash /home/ubuntu/solarswarm
+COPY solarswarm/ /home/ubuntu/solarswarm/
+COPY base_robot/base_robot_init.bash /home/ubuntu/solarswarm
 # COPY unzip.py /home/ubuntu/solarswarm
 WORKDIR /home/ubuntu/solarswarm
 SHELL ["/bin/bash", "-c"]

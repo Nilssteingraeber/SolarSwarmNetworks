@@ -12,8 +12,8 @@ services:
     # to excluse nodes from this, change those nodes' availability to drain
     # or introduce a new label and constraints to differentiate between robot and non-robot
     build:
-      context: ./base_robot
-      dockerfile: base_robot.Dockerfile
+      context: .
+      dockerfile: base_robot/base_robot.Dockerfile
       network: host
     volumes:
       - /tmp/iw_dump/:/tmp/iw_dump/
@@ -21,8 +21,8 @@ services:
   
   data_sink:
     build:
-      context: ./data_sink
-      dockerfile: sw_robot.Dockerfile
+      context: .
+      dockerfile: data_sink/sw_robot.Dockerfile
       # network: host
     volumes:
       - ./logs/:/tmp/logs/
