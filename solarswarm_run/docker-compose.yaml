@@ -166,6 +166,93 @@ services:
         constraint:
           - node.labels.ram_ge_8gb
 
+
+
+
+
+  ### 3D - Meshes on Map ###
+  # Deutschland – Zero – Version 2.0
+  # https://www.govdata.de/dl-de/zero-2-0
+  three_d_server:
+    build: ./backend
+    depends_on:
+      - backend
+    volumes:
+      - ./backend:/app
+      - ./bigData/data:/app/data
+    command: python -u ./file_server/3DServer.py
+    ports:
+      - "9005:9005"
+    deploy:
+          mode: replicated
+          replicas: 1
+          placement:
+            constraint:
+              - node.labels.has_3d_map_data
+
+  ### Digital Elevation Model ###
+  # © Bundesamt für Kartographie und Geodäsie (BKG), Datenlizenz Deutschland – Namensnennung – Version 2.0
+  terrain_server:
+    build: ./backend
+    depends_on:
+      - backend
+    volumes:
+      - ./backend:/app
+      - ./bigData/dem/tiles:/app/terraindata
+    command: python -u ./file_server/TerrainServer.py
+    ports:
+      - "9010:9010"
+    deploy:
+          mode: replicated
+          replicas: 1
+          placement:
+            constraint:
+              - node.labels.has_2d_map_data
+
+  ### OpenStreetMap-Data Server ###
+  # TODO OSM-License
+  tileserver:
+    image: maptiler/tileserver-gl:latest
+    volumes:
+      - ./bigData/osm/:/osmdata/
+      - ./backend/file_server/osm/tileserver:/tileserver
+
+    ports:
+      - "9015:9015"
+    command: ["-c", "/tileserver/config.json", "-p", "9015"]
+    deploy:
+          mode: replicated
+          replicas: 1
+          placement:
+            constraint:
+              - node.labels.has_2d_map_data
+
+  ### Vue ###
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "5170:5170"
+    volumes:
+      - ./frontend:/app
+    command: npm run dev -- --port 5170 --host
+    environment:                   
+        - VITE_USE_SIM=true
+        # Ports
+        - VITE_PORT=9000
+        - VITE_MESH_3D_SERVER_PORT=9005
+        - VITE_DEM_SERVER_PORT=9010
+        - VITE_OSM_SERVER_PORT=9015
+        # Edit: Chris' Backend URL
+        - DB_URL=http://localhost:XXXX/
+    deploy:
+          mode: replicated
+          replicas: 1
+          placement:
+            constraint:
+              - node.labels.has_web
+
 volumes:
   pgdata:
 

@@ -3,24 +3,24 @@
     "cors": true,
     "formatOptions": {
       "jpeg": {
-        "quality": 80
+        "quality": 100
       },
       "webp": {
-        "quality": 90
+        "quality": 100
       }
     },
     "domains": [
-      "localhost:8080",
-      "127.0.0.1:8080"
+      "localhost:9015",
+      "127.0.0.1:9015"
     ],
     "paths": {
-      "root": "",
-      "fonts": "fonts/"
+      "root": "/osmdata",
+      "fonts": "/tileserver/fonts/"
     }
   },
   "data": {
     "NRW-Tiles": {
-      "mbtiles": "nordrhein-westfalen.mbtiles",
+      "mbtiles": "/osmdata/nordrhein-westfalen.mbtiles",
       "encoding": "mapbox",
       "tileSize": 512,
       "sparse": true
@@ -28,7 +28,7 @@
   },
   "styles": {
     "basic": {
-      "style": "style.json",
+      "style": "/tileserver/style.json",
       "tilejson": {
         "type": "overlay",
         "bounds": [
