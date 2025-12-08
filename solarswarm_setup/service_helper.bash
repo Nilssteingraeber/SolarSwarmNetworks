@@ -203,7 +203,7 @@ echo "Warning: This script is executed with root priviliges and uses
     respective service names should be used."
 echo "Continue? y/N "
 read continue
-if [ -z $continue ] || [ $continue == "N" ] || [ $continue == "n" ]; then
+if [ -z $continue ] || [ ! $continue == "y" ]; then
     exit 0
 fi
 
