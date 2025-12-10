@@ -1,0 +1,3 @@
+Subscribe /swarm/docker_swarm_status im ROS2 quorum node.
+
+Änder den quorum-Knoten so, dass er dieses topic abhört, und löse sofort einen trigger failsafe aus, wenn die Nachricht „quorum_lost”: true enthält.
