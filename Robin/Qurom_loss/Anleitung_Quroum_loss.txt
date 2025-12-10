@@ -1,3 +1,11 @@
-Subscribe /swarm/docker_swarm_status im ROS2 quorum node.
+Deploy docker_swarm_quorum_checker.py auf jedem Docker Swarm-Manager-Knoten bereit (innerhalb eines Containers, der über Docker-CLI-Zugriff verfügt).
 
-Änder den quorum-Knoten so, dass er dieses topic abhört, und löse sofort einen trigger failsafe aus, wenn die Nachricht „quorum_lost”: true enthält.
+Deploy swarm_quorum_node.py auf jedem Drohnen-/Maschinenknoten bereit (innerhalb des Containers, auf dem Ihr ROS2-Drohnen-Stack ausgeführt wird).
+
+Deploy failsafe_listener.py auf Drohnenknoten bereit, die RTB- oder andere ausfallsichere Aktionen auslösen.
+
+Beispiel:
+
+ros2 run your_package docker_swarm_quorum_checker
+ros2 run your_package swarm_quorum_node --ros-args -p swarm_size:=3 -p failsafe_action:=RTL
+ros2 run your_package failsafe_listener
