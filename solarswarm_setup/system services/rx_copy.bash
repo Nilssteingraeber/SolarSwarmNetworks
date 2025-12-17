@@ -31,29 +31,17 @@ if [ $COPY_TO_SSH == true ]; then
         fi
         
         for name in $($SW_SETUP/ssh_identities/names); do
-            if [ -f $SW_SETUP/rx/ssh/$name.pub ] && [ ! $pub_key == $MESH_IDENTITY.pub ]; then
-                mv $SW_SETUP/rx/ssh/$pub_key $SW_SETUP/ssh_identities/keys/
-                echo "[rx_copy] Moved '$pub_key' to '$SW_SETUP/ssh_identities/keys/'" >>$LOG_OUT
+            if [ ! -z $name ] && [ -d $SW_SETUP/rx/ssh/ ] && [ ! -z $SW_SETUP/rx/ssh/$name.pub] && [ ! $name == $MESH_IDENTITY ]; then
+                mv $SW_SETUP/rx/ssh/$name.pub $SW_SETUP/ssh_identities/keys/
+                echo "[rx_copy] Moved '$name.pub' to '$SW_SETUP/ssh_identities/keys/'" >>$LOG_OUT
                 changed=true
             fi
         done
 
-        # copy all to .ssh/ if anything has changed
-        # done after everything was moved so ssh_identities/ and .ssh/ are synchronized
         if [ ! -z $MESH_IP ] && [ $changed == true ] && [ $AUTO_UPDATE_SSH == true ]; then
             cp $SW_SETUP/ssh_identities/config ~/.ssh/
             sudo sed -i "s/own_name/$MESH_IP/" ~/.ssh/config # replace own_name with MESH_IP
-            for name in $($SW_SETUP/ssh_identities/names); do
-                if [ -f $SW_SETUP/ssh_identities/keys/$name.pub ]; then
-                    ssh-copy-id -i $SW_SETUP/ssh_identities/keys/$name.pub $MESH_IDENTITY@$MESH_IP
-                    # used to add public keys to '~/.ssh/' and '~/.ssh/authorized_keys/'
-                    
-                    # instead of using ssh-copy-id to copy keys to different hosts, this service 
-                    # copies locally existing keys to itself, requiring only this host's password
-                fi
-            done
-            # easier (but less safe): for pub_key in $(ls $SW_SETUP/ssh_identities/keys/); do...
-            echo "[rx_copy] Copied 'config' and public keys to '~/.ssh/'" >>$LOG_OUT
+            echo "[rx_copy] Copied 'config' to '~/.ssh/'" >>$LOG_OUT
         fi
     fi
 fi

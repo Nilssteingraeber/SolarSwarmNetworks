@@ -2,7 +2,7 @@
 
 # WLANDEV="wlp0s20f3"
 source /etc/environment
-if [ $(echo $WLANDEV | wc --chars) -eq 1 ]; then
+if [ ! -z $WLANDEV ] && [ $(echo $WLANDEV | wc --chars) -eq 1 ]; then
   >&2 echo "Error: WLANDEV was not set. Export WLANDEV or use the service setup script."
   exit 1
 fi

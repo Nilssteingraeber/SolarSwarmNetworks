@@ -22,35 +22,44 @@ if [ -z $1 ]; then # print help if no arguments were passed
         bash service_helper [options] [additional options]
     Options:
         status
-            show service status, presence of files, and envs
+          - show service status, presence of files, and envs
         wlandev [wireless interface]
-            set WLANDEV to given wlan device
+          - set WLANDEV to given wlan device
         ssh
-            generate ssh keys with a name
-        send <keys | hosts>
-            copy keys or hosts (names, names_with_ip,
-            config) onto all available hosts
-        collect <logs> <all | hostname>
-            collect files from hosts (currently only logs)
-            copies solarswarm_run/logs/ and solarswarm_setup/logs/
-            target is solarswarm_setup/rx/logs/<run | setup>/<hostname>/
+          - generate ssh keys with a name
+        send <keys | hosts> <everybody | hostname> [register]
+          - copy keys or hosts (names, names_with_ip, config) onto all
+            available hosts
+          - add all local public keys to a hosts' 'authorized_keys'
+            with option 'register'
+        collect <logs | keys> <everybody | hostname>
+          - collect files from hosts (currently only logs)
+          - copies solarswarm_run/logs/ and solarswarm_setup/logs/
+          - target is solarswarm_setup/rx/logs/<run | setup>/<hostname>/
+        register
+          - add local public keys to 'authorized_keys'
     	setup
-            copy files, make scripts executable, reload systemd,
-    	    enable timer, and restart all services
-    	cleanup
-            remove services and files (except ssh keys and hosts)
+          - copy files, make scripts executable, reload systemd,
+    	  - enable timers and restart all services
+    	cleanup [with_keys]
+          - remove services and files (except ssh keys and hosts)
+          - remove all ssh keys if 'with_keys' is given
     	restart [valid service]
-            restart all or a specific service (or timer)
+          - restart all or a specific service (or timer)
     	stop [valid service]
-            stop all or a specific service (or timer)
+          - stop all or a specific service (or timer)
     	enable [valid service]
-            enable all or a specific service (or timer)
+          - enable all or a specific service (or timer)
     	disable [valid service]
-            disable all or a specific service (or timer)
+          - disable all or a specific service (or timer)
         managed
-            return from ad-hoc to managed mode (required for internet
+          - return from ad-hoc to managed mode (required for internet
             access)
     Notes:
+        <argument>                for required argument
+        [argument]                for optional argument
+        argument | argument       for choice of arguments
+
         - 'All' services excludes docker_leader as that service should
           generally be startet by the docker_init service if a file
           'leader' with the host's name in it is inside 'docker/'.
@@ -60,6 +69,7 @@ if [ -z $1 ]; then # print help if no arguments were passed
         - Use send option while all target robots are reachable to
           update changes to 'name', 'names_with_ip' and 'config' or
           to share one's own a new public key.
+        - Internet access is only possible while in 'managed' mode.
         - Ensure that 'system services/batman_adv_setup.bash' uses
           the correct wireless interface to set up ad-hoc mode. To
           disable ad-hoc, use the 'managed' option.
@@ -94,27 +104,72 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
     
     sudo hostname $MESH_IDENTITY # set hostname
     
-    # go through list of hosts using a for-each loop
-    # for i in $(cat ...names_with_ip) would read word by word, not line by line
-    # so instead, the line count is used to cut the list to one line containing only: host ip
-    line_count=$(cat $SW_SETUP/ssh_identities/names_with_ip | wc -l)
-    for i in $(seq 1 $line_count); do
-        # read host and ip from single i-th line
-        read host ip <<< $(head -$i $SW_SETUP/ssh_identities/names_with_ip | tail -1)
-        # skip self or host without public key
-        # '[ ! -z $host ]' to catch empty string: '[ == $MESH_IDENTITY ]' throws syntax exception
-        if [ ! -z $host ] && [ $host == $MESH_IDENTITY ] || [ ! -f ~/.ssh/$host.pub ]; then continue; fi
+    if [ $2 == "everybody" ]; then
+        # go through list of hosts using a for-each loop
+        # for i in $(cat ...names_with_ip) would read word by word, not line by line
+        # so instead, the line count is used to cut the list to one line containing only: host ip
+        line_count=$(cat ssh_identities/names_with_ip | wc -l)
+        for i in $(seq 1 $line_count); do
+            # read host and ip from single i-th line
+            read host ip <<< $(head -$i ssh_identities/names_with_ip | tail -1)
+            # skip empty hosts and self
+            if [ -z $host ] || [ -z $ip]; then continue; fi
+            if [ ! -z $host ] && [ $host == $MESH_IDENTITY ]; then continue; fi
+            echo "Connecting to $host $ip..."
+            # check if host is reachable (timeout 1 second (-W) and ping count limited to 1 (-c))
+            if ping -W 1 -c 1 $ip &>/dev/null; then # ping once with 1s timeout
+                echo "Reached $host"
+                remote_setup=/home/$host/solarswarm_setup
+                
+                if [ ! -z $1 ] && [ $1 == "keys" ]; then # copy public keys
+                    if [ ! -z $3] && [ $3 == "register" ]; then # adds to authorized_keys of host
+                        for pub_key in $(ls ssh_identities/keys/); do
+                            ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$pub_key $host@$ip
+                            # note: currently all keys in 'ssh_identities/keys/' are trusted
+                        done
+                    fi
+                    scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/*.pub \
+                        $host:$remote_setup/ssh_identities/rx/ssh/ # copy public keys
+                elif [ ! -z $1 ] && [ $1 == "hosts" ]; then # copy names, names_with_ip, and config to all reachable hosts
+                    scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/names \
+                        $host:$remote_setup/ssh_identities/rx/ssh/
+                    scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/names_with_ip \
+                        $host:$remote_setup/ssh_identities/rx/ssh/
+                    scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/config \
+                        $host:$remote_setup/ssh_identities/rx/ssh/
+                else
+                    echo "Error: No valid option"
+                    exit 1
+                fi
+            else
+                echo "Failed to reach $host"
+            fi
+        done
+    else # with specific name
+        if [ -z $2 ] || ! $(grep -E "^$2$" ssh_identities/names &>/dev/null); then
+            echo "Error: Expected 'everybody' or a known name after 'logs'"
+            exit 1
+        fi
+        read host ip <<< $(grep -E "^$2 " ssh_identities/names_with_ip &>/dev/null)
         echo "Connecting to $host $ip..."
         # check if host is reachable (timeout 1 second (-W) and ping count limited to 1 (-c))
         if ping -W 1 -c 1 $ip &>/dev/null; then # ping once with 1s timeout
-            echo "Reached $host"
+            echo "    Reached $host"
+            remote_run=/home/$host/solarswarm_run
             remote_setup=/home/$host/solarswarm_setup
+
             if [ ! -z $1 ] && [ $1 == "keys" ]; then # copy public keys
+                if [ ! -z $3] && [ $3 == "register" ]; then # adds to authorized_keys of host
+                    # register own key key first to not require a password for every other key
+                    ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$MESH_IDENTITY.pub $host@$ip
+                    for pub_key in $(ls ssh_identities/keys/); do
+                        if [ pub_key == MESH_IDENTITY.pub ]; then continue; fi
+                        ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$pub_key $host@$ip
+                        # note: currently all keys in 'ssh_identities/keys/' are trusted
+                    done
+                fi
                 scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/*.pub \
                     $host:$remote_setup/ssh_identities/rx/ssh/ # copy public keys
-                scp $SSH_TIMEOUT $HOST_CHECKING ~/.ssh/authorized_keys \
-                    $host:$remote_setup/rx/ssh/ # copy authorized_keys
-                # host must have rx_copy.service active to copy it to their .ssh directory
             elif [ ! -z $1 ] && [ $1 == "hosts" ]; then # copy names, names_with_ip, and config to all reachable hosts
                 scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/names \
                     $host:$remote_setup/ssh_identities/rx/ssh/
@@ -122,11 +177,15 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
                     $host:$remote_setup/ssh_identities/rx/ssh/
                 scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/config \
                     $host:$remote_setup/ssh_identities/rx/ssh/
+            else
+                echo "Error: No valid option"
+                exit 1
             fi
         else
-            echo "Failed to reach $host"
+            echo "    Failed to reach $host"
+            exit 1
         fi
-    done
+    fi
 }
 
 collect() { # copy files from all reachable ssh hosts to local rx/
@@ -143,56 +202,91 @@ collect() { # copy files from all reachable ssh hosts to local rx/
     
     sudo hostname $MESH_IDENTITY # set hostname
 
-    if [ ! -z $1 ] && [ $1 == "logs" ]; then # copy logs
-        if [ -z $2 ]; then
-            echo "Error: Expected 'all' or a known name after logs"
-            exit 1
-        elif [ $2 == "all" ]; then
-            line_count=$(cat $SW_SETUP/ssh_identities/names_with_ip | wc -l)
-            for i in $(seq 1 $line_count); do
-                # read host and ip from single i-th line
-                read host ip <<< $(head -$i $SW_SETUP/ssh_identities/names_with_ip | tail -1)
-                # skip self or host without public key
-                if [ ! -z $host ] && [ $host == $MESH_IDENTITY ] || [ ! -f ~/.ssh/$host.pub ]; then continue; fi
-                echo "Connecting to $host $ip..."
-                # check if host is reachable (timeout 1 second (-W) and ping count limited to 1 (-c))
-                if ping -W 1 -c 1 $ip &>/dev/null; then # ping once with 1s timeout
-                    echo "    Reached $host"
-                    remote_run=/home/$host/solarswarm_run
-                    remote_setup=/home/$host/solarswarm_setup
+    if [ $2 == "everybody" ]; then
+        line_count=$(cat ssh_identities/names_with_ip | wc -l)
+        for i in $(seq 1 $line_count); do
+            # read host and ip from single i-th line
+            read host ip <<< $(head -$i ssh_identities/names_with_ip | tail -1)
+            # skip empty hosts and self
+            if [ -z $host ] || [ -z $ip]; then continue; fi
+            if [ ! -z $host ] && [ $host == $MESH_IDENTITY ]; then continue; fi
+            echo "Connecting to $host $ip..."
+            # check if host is reachable (timeout 1 second (-W) and ping count limited to 1 (-c))
+            if ping -W 1 -c 1 $ip &>/dev/null; then # ping once with 1s timeout
+                echo "    Reached $host"
+                remote_run=/home/$host/solarswarm_run
+                remote_setup=/home/$host/solarswarm_setup
+
+                if [ ! -z $1 ] && [ $1 == "logs" ]; then # copy logs    
                     if [ ! -d rx/logs/run/$host ]; then mkdir rx/logs/run/$host; fi
                     if [ ! -d rx/logs/setup/$host ]; then mkdir rx/logs/setup/$host; fi
                     scp -r $SSH_TIMEOUT $HOST_CHECKING $host:$remote_run/logs/* rx/logs/run/$host
                     scp -r $SSH_TIMEOUT $HOST_CHECKING $host:$remote_setup/logs/* rx/logs/setup/$host
-                else
-                    echo "    Failed to reach $host"
+                elif [ ! -z $1 ] && [ $1 == "keys" ]; then # copy keys
+                    scp $SSH_TIMEOUT $HOST_CHECKING $host:$remote_setup/ssh_identities/keys/*.pub \
+                        ssh_identities/rx/ssh/ # copy public keys
                 fi
-            done
-        elif grep -E "^$2$" $SW_SETUP/ssh_identities/names &>/dev/null; then # specific name
-            if [ ! -z $2 ] && [ $2 == $MESH_IDENTITY ] || [ ! -f ~/.ssh/$2.pub ]; then
-                # explicitly collect own logs
-                if [ ! -d rx/logs/run/$MESH_IDENTITY ]; then mkdir rx/logs/run/$MESH_IDENTITY; fi
-                if [ ! -d rx/logs/setup/$MESH_IDENTITY ]; then mkdir rx/logs/setup/$MESH_IDENTITY; fi
-                cp -r $SW_RUN/logs/* $SW_SETUP/rx/logs/$MESH_IDENTITY/
             else
-                echo "Connecting to $host $ip..."
-                if ping -W 1 -c 1 $ip &>/dev/null; then # ping once with 1s timeout
-                    echo "    Reached $2"
-                    remote_run=/home/$2/solarswarm_run
-                    remote_setup=/home/$2/solarswarm_setup
-                    if [ ! -d rx/logs/run/$2 ]; then mkdir rx/logs/run/$2; fi
-                    if [ ! -d rx/logs/setup/$2 ]; then mkdir rx/logs/setup/$2; fi
+                echo "    Failed to reach $host"
+            fi
+        done
+    else # with specific name
+        if [ -z $2 ] || ! $(grep -E "^$2$" ssh_identities/names &>/dev/null); then
+            echo "Error: Expected 'everybody' or a known name after 'logs'"
+            exit 1
+        fi
+        read host ip <<< $(grep -E "^$2 " ssh_identities/names_with_ip &>/dev/null)
+        echo "Connecting to $host $ip..."
+        # check if host is reachable (timeout 1 second (-W) and ping count limited to 1 (-c))
+        if ping -W 1 -c 1 $ip &>/dev/null; then # ping once with 1s timeout
+            echo "    Reached $host"
+            remote_run=/home/$host/solarswarm_run
+            remote_setup=/home/$host/solarswarm_setup
+
+            if [ ! -z $1 ] && [ $1 == "logs" ]; then # copy logs
+                if [ ! -z $2 ] && [ $2 == $MESH_IDENTITY ]; then
+                    # explicitly collect own logs
+                    if [ ! -d rx/logs/run/$MESH_IDENTITY ]; then mkdir rx/logs/run/$MESH_IDENTITY; fi
+                    if [ ! -d rx/logs/setup/$MESH_IDENTITY ]; then mkdir rx/logs/setup/$MESH_IDENTITY; fi
+                    cp -r $SW_RUN/logs/* rx/logs/run/$MESH_IDENTITY/
+                    cp -r logs/* rx/logs/setup/$MESH_IDENTITY/
+                else
+                    if [ ! -d rx/logs/run/$2 ]; then mkdir rx/logs/run/$host; fi
+                    if [ ! -d rx/logs/setup/$2 ]; then mkdir rx/logs/setup/$host; fi
                     scp -r $SSH_TIMEOUT $HOST_CHECKING $2:$remote_run/logs/* rx/logs/run/$2
                     scp -r $SSH_TIMEOUT $HOST_CHECKING $2:$remote_setup/logs/* rx/logs/setup/$2
-                else
-                    echo "    Failed to reach $2"
                 fi
+            elif [ ! -z $1 ] && [ $1 == "keys" ]; then # copy public keys
+                scp $SSH_TIMEOUT $HOST_CHECKING $host:$remote_setup/ssh_identities/keys/*.pub \
+                    ssh_identities/rx/ssh/
+            else
+                echo "Error: No valid option"
+                exit 1
             fi
+        else
+            echo "    Failed to reach $host"
         fi
-    else
-        echo "Error: No valid option was given"
+    fi
+}
+
+register_locally() {
+    source /etc/environment # reload envs
+    if [ -z $MESH_IDENTITY ]; then # check if name is set
+        echo "Error: MESH_IDENTITY has not been set"
         exit 1
     fi
+
+    if [ -z $MESH_IP ]; then # check if ip is set
+        echo "Error: MESH_IDENTITY has not been set"
+        exit 1
+    fi
+    
+    sudo hostname $MESH_IDENTITY # set hostname
+
+    for pub_key in $(ls ssh_identities/keys/); do
+        ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$pub_key $MESH_IDENTITY@localhost
+        # note: currently all keys in 'ssh_identities/keys/' are trusted
+    done
 }
 
 echo "Warning: This script is executed with root priviliges and uses
@@ -274,9 +368,9 @@ elif [ $1 == "wlandev" ]; then
     source /etc/environment
 elif [ $1 == "send" ]; then
     if [ ! -z $2 ] && [ $2 == "keys" ]; then
-        send_to_hosts keys
+        send_to_hosts keys $3
     elif [ ! -z $2 ] && [ $2 == "hosts" ]; then
-        send_to_hosts hosts
+        send_to_hosts hosts $3
     else
         echo "Error: Choose either keys (public keys) or hosts (config, names, names_with_ip) to send"
         exit 1    
@@ -288,6 +382,8 @@ elif [ $1 == "collect" ]; then
         echo "Error: Only logs can be collected currentrly"
         exit 1    
     fi
+elif [ $1 == "register" ]; then
+    register_locally
 elif [ $1 == "ssh" ]; then
     if [ ! -d ~/.ssh ]; then # check if .ssh/ exists
         mkdir ~/.ssh
@@ -429,6 +525,9 @@ elif [ $1 == "setup" ]; then
     sudo systemctl enable docker_init.service
     sudo systemctl enable rx_copy.service
     
+    if [ -d ~/.ssh/ ] && [ -f ~/.ssh/authorized_keys ] && [ ! -f ~/.ssh/authorized_keys ]; then
+        cp ~/.ssh/authorized_keys ~/.ssh/authorized_keys.bak # create backup if none exists already
+    fi
     echo "Done"
 elif [ $1 == "cleanup" ]; then
     echo "Starting cleanup..."
@@ -459,6 +558,13 @@ elif [ $1 == "cleanup" ]; then
     sudo rm -f /usr/local/bin/docker_init.bash
     sudo rm -f /usr/local/bin/rx_copy.bash
     rm -rf /tmp/iw_dump/
+    if [ ! -z $2 ] && [ $2 == "with_keys"]; then
+        if [ -f ~/.ssh/authorized_keys ]; then
+            sudo rm ~/.ssh/authorized_keys
+        fi
+        rm ssh_identities/keys/
+    fi
+    cp ~/.ssh/authorized_keys.bak ~/.ssh/authorized_keys # restore backup
     echo "Done"
 elif [ $1 == "restart" ]; then
     if [ -z $2 ]; then
@@ -547,6 +653,8 @@ elif [ $1 == "disable" ]; then
         echo_valid_service
     fi
 elif [ $1 == "managed" ]; then
+    sudo systemctl start firewalld
+
     sudo systemctl stop batman_adv_setup.service 2>/dev/null
     sudo systemctl stop batman_adv_healthcheck.service 2>/dev/null
     sudo systemctl stop iw_dump.timer 2>/dev/null
