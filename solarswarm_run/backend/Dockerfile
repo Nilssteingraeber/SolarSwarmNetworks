@@ -11,11 +11,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python requirements
-COPY backend/requirements.txt .
+COPY backend/backend/requirements.txt .
 RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Copy application code
-COPY backend/ .
+COPY backend/backend/. .
 
 # Expose port
 EXPOSE 8000

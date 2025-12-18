@@ -8,11 +8,11 @@ RUN apt-get update && apt-get install -y build-essential gcc libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Abhängigkeiten kopieren und installieren
-COPY requirements.txt .
+COPY backend/backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # App-Code kopieren (einschließlich 3DServer.py falls dort liegt)
-COPY . .
+COPY backend/backend/. .
 
 # Port für uvicorn
 EXPOSE 8000
