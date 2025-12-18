@@ -1,4 +1,3 @@
-# backend/Dockerfile
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -8,11 +7,11 @@ RUN apt-get update && apt-get install -y build-essential gcc libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Abhängigkeiten kopieren und installieren
-COPY backend/backend/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # App-Code kopieren (einschließlich 3DServer.py falls dort liegt)
-COPY backend/backend/. .
+COPY . .
 
 # Port für uvicorn
 EXPOSE 8000

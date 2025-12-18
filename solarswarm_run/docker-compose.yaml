@@ -65,7 +65,7 @@ services:
     image: backend
     build: 
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: backend/backend.Dockerfile
     environment:
       DATABASE_URL: postgresql://postgres:securepassword@db:5432/rosData
       ROS_DISTRO: jazzy
@@ -144,8 +144,8 @@ services:
   three_d_server:
     image: three_d_server
     build:
-      context: .
-      dockerfile: backend/backend/Dockerfile
+      context: ./backend/backend/
+      dockerfile: terrain_server.Dockerfile
     depends_on:
       - backend
     volumes:
@@ -162,8 +162,8 @@ services:
   terrain_server:
     image: terrain_server
     build:
-      context: .
-      dockerfile: backend/backend/terrain_server.Dockerfile
+      context: ./backend/backend/
+      dockerfile: terrain_server.Dockerfile
     depends_on:
       - backend
     volumes:
@@ -180,8 +180,8 @@ services:
   tileserver:
     image: tileserver
     build:
-      context: .
-      dockerfile: backend/backend/tileserver.Dockerfile
+      context: ./backend/backend/file_server
+      dockerfile: tileserver.Dockerfile
     volumes:
       - ./bigData/osm/:/osmdata/
       - ./backend/backend/file_server/osm/tileserver:/tileserver
@@ -196,7 +196,7 @@ services:
     image: frontend
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: frontend.Dockerfile
     depends_on:
       - backend
     ports:
