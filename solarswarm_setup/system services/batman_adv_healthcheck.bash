@@ -4,7 +4,7 @@ WAIT=5
 
 inspections=$PATIENCE
 
-while true; do
+while [ 0 ]; do
     if [ $(sudo batctl n | awk "NR>2" | wc -l) -eq 0 ]; then
         inspections=$(($inspections-1))
         # echo Lost patience

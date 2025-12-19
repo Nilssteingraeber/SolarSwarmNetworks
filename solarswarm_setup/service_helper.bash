@@ -317,34 +317,32 @@ if [ $1 == "status" ]; then
         batman_adv_setup         $(sudo systemctl is-active batman_adv_setup.service)
         docker_leader            $(sudo systemctl is-active docker_leader.service)
         docker_init              $(sudo systemctl is-active docker_init.service)
-        iw_dump (timer)          $(sudo systemctl is-active iw_dump.timer)
+        iw_dump                  $(sudo systemctl is-active iw_dump.service)
         rx_copy                  $(sudo systemctl is-active rx_copy.service)
     Enabled services: (enabled | disabled | not-found)
         batman_adv_healthcheck   $(sudo systemctl is-enabled batman_adv_healthcheck.service)
         batman_adv_setup         $(sudo systemctl is-enabled batman_adv_setup.service)
         docker_leader            $(sudo systemctl is-enabled docker_leader.service)
         docker_init              $(sudo systemctl is-enabled docker_init.service)
-        iw_dump (timer)          $(sudo systemctl is-enabled iw_dump.timer)
+        iw_dump                  $(sudo systemctl is-enabled iw_dump.service)
         rx_copy                  $(sudo systemctl is-enabled rx_copy.service)
     Files:
         ~/.ssh/                  $(if [ -d ~/.ssh/ ]; then echo exists; fi)
         ~/.ssh/config            $(if [ -d ~/.ssh/ ] && [ -f ~/.ssh/config ]; then echo exists; fi)
         ~/.ssh/MESH_IDENTITY     $(if [ -d ~/.ssh/ ] && [ -f ~/.ssh/$MESH_IDENTITY ]; then echo exists; fi)
-        /tmp/iw_dump/            $(if [ -d /tmp/iw_dump/ ]; then echo exists; fi)
-        /tmp/iw_dump/iw_dump.txt $(if [ -d /tmp/iw_dump/ ] && [ -f /tmp/iw_dump/iw_dump.txt ]; then echo exists; fi)
     Services: (.service and .timer files in /etc/systemd/system/)
         batman_adv_healthcheck   $(if [ -f /etc/systemd/system/batman_adv_healthcheck.service ]; then echo exists; fi)
         batman_adv_setup         $(if [ -f /etc/systemd/system/batman_adv_setup.service ]; then echo exists; fi)
         docker_leader            $(if [ -f /etc/systemd/system/docker_leader.service ]; then echo exists; fi)
         docker_init              $(if [ -f /etc/systemd/system/docker_init.service ]; then echo exists; fi)
-        iw_dump (timer)          $(if [ -f /etc/systemd/system/iw_dump.timer ]; then echo exists; fi)
+        iw_dump                  $(if [ -f /etc/systemd/system/iw_dump.service ]; then echo exists; fi)
         rx_copy                  $(if [ -f /etc/systemd/system/rx_copy.service ]; then echo exists; fi)
     Services: (.bash scripts in /usr/local/bin)
         batman_adv_healthcheck   $(if [ -f /usr/local/bin/batman_adv_healthcheck.bash ]; then echo exists; fi)
         batman_adv_setup         $(if [ -f /usr/local/bin/batman_adv_setup.bash ]; then echo exists; fi)
         docker_leader            $(if [ -f /usr/local/bin/docker_leader.bash ]; then echo exists; fi)
         docker_init              $(if [ -f /usr/local/bin/docker_init.bash ]; then echo exists; fi)
-        iw_dump (timer)          $(if [ -f /usr/local/bin/iw_dump.bash ]; then echo exists; fi)
+        iw_dump                  $(if [ -f /usr/local/bin/iw_dump.bash ]; then echo exists; fi)
         rx_copy                  $(if [ -f /usr/local/bin/rx_copy.bash ]; then echo exists; fi)
     """
 elif [ $1 == "wlandev" ]; then
@@ -500,8 +498,11 @@ elif [ $1 == "setup" ]; then
         echo "Error: Set all variables with options 'wlandev' and 'ssh' before setup"
         exit 1
     fi
+    if [ ! $(id -u $MESH_IDENTITY) ]; then
+        echo "Error: The given user does not exist"
+        exit 1
+    fi
     echo "Starting setup..."
-    mkdir /tmp/iw_dump
     sudo cp system\ services/*.bash /usr/local/bin/
     sudo chmod +x /usr/local/bin/batman_adv_setup.bash
     sudo chmod +x /usr/local/bin/batman_adv_healthcheck.bash
@@ -521,11 +522,11 @@ elif [ $1 == "setup" ]; then
     
     sudo systemctl enable batman_adv_setup.service
     sudo systemctl enable batman_adv_healthcheck.service
-    sudo systemctl enable --now iw_dump.timer
+    sudo systemctl enable iw_dump.service
     sudo systemctl enable docker_init.service
     sudo systemctl enable rx_copy.service
     
-    if [ -d ~/.ssh/ ] && [ -f ~/.ssh/authorized_keys ] && [ ! -f ~/.ssh/authorized_keys ]; then
+    if [ -d ~/.ssh/ ] && [ -f ~/.ssh/authorized_keys ] && [ ! -f ~/.ssh/authorized_keys.bak ]; then
         cp ~/.ssh/authorized_keys ~/.ssh/authorized_keys.bak # create backup if none exists already
     fi
     echo "Done"
@@ -533,13 +534,14 @@ elif [ $1 == "cleanup" ]; then
     echo "Starting cleanup..."
     sudo systemctl stop batman_adv_healthcheck.service
     sudo systemctl stop batman_adv_setup.service
+    sudo systemctl stop iw_dump.service
     sudo systemctl stop docker_leader.service
     sudo systemctl stop docker_init.service
     sudo systemctl stop rx_copy.service
     
     sudo systemctl disable batman_adv_healthcheck.service
     sudo systemctl disable batman_adv_setup.service
-    sudo systemctl disable --now iw_dump.timer 1> /dev/null
+    sudo systemctl disable iw_dump.servie
     sudo systemctl disable docker_leader.service
     sudo systemctl disable docker_init.service
     sudo systemctl disable rx_copy.service
@@ -547,7 +549,6 @@ elif [ $1 == "cleanup" ]; then
     sudo rm -f /etc/systemd/system/batman_adv_setup.service
     sudo rm -f /etc/systemd/system/batman_adv_healthcheck.service
     sudo rm -f /etc/systemd/system/iw_dump.service
-    sudo rm -f /etc/systemd/system/iw_dump.timer
     sudo rm -f /etc/systemd/system/docker_leader.service
     sudo rm -f /etc/systemd/system/docker_init.service
     sudo rm -f /etc/systemd/system/rx_copy.service
@@ -557,20 +558,21 @@ elif [ $1 == "cleanup" ]; then
     sudo rm -f /usr/local/bin/docker_leader.bash
     sudo rm -f /usr/local/bin/docker_init.bash
     sudo rm -f /usr/local/bin/rx_copy.bash
-    rm -rf /tmp/iw_dump/
     if [ ! -z $2 ] && [ $2 == "with_keys"]; then
         if [ -f ~/.ssh/authorized_keys ]; then
             sudo rm ~/.ssh/authorized_keys
         fi
+        if [ -f ~/.ssh/authorized_keys.bak ]; then
+            mv ~/.ssh/authorized_keys.bak ~/.ssh/authorized_keys # restore backup
+        fi
         rm ssh_identities/keys/
     fi
-    cp ~/.ssh/authorized_keys.bak ~/.ssh/authorized_keys # restore backup
     echo "Done"
 elif [ $1 == "restart" ]; then
     if [ -z $2 ]; then
 	    sudo systemctl restart batman_adv_setup.service
 	    sudo systemctl restart batman_adv_healthcheck.service
-        sudo systemctl start iw_dump.timer
+        sudo systemctl restart iw_dump.service
         # sudo systemctl restart docker_leader.service
         sudo systemctl restart docker_init.service
     elif [ $2 == "batman_adv_setup" ]; then
@@ -578,7 +580,7 @@ elif [ $1 == "restart" ]; then
     elif [ $2 == "batman_adv_healthcheck" ]; then
     	sudo systemctl restart batman_adv_healthcheck.service
     elif [ $2 == "iw_dump" ]; then
-        sudo systemctl restart iw_dump.timer
+        sudo systemctl restart iw_dump.service
     elif [ $2 == "docker_leader" ]; then
         sudo systemctl restart docker_leader.service
     elif [ $2 == "docker_init" ]; then
@@ -592,7 +594,7 @@ elif [ $1 == "stop" ]; then
     if [ -z $2 ]; then
 	    sudo systemctl stop batman_adv_setup.service
 	    sudo systemctl stop batman_adv_healthcheck.service
-        sudo systemctl stop iw_dump.timer
+        sudo systemctl stop iw_dump.service
         sudo systemctl stop docker_leader.service
         sudo systemctl stop docker_init.service
         sudo systemctl stop rx_copy.service
@@ -601,7 +603,7 @@ elif [ $1 == "stop" ]; then
     elif [ $2 == "batman_adv_healthcheck" ]; then
     	sudo systemctl stop batman_adv_healthcheck.service
     elif [ $2 == "iw_dump" ]; then
-        sudo systemctl stop iw_dump.timer # useless?
+        sudo systemctl stop iw_dump.service
     elif [ $2 == "docker_leader" ]; then
         sudo systemctl stop docker_leader.service
     elif [ $2 == "docker_init" ]; then
@@ -615,7 +617,7 @@ elif [ $1 == "enable" ]; then
     if [ -z $2 ]; then
 	    sudo systemctl enable batman_adv_setup.service
 	    sudo systemctl enable batman_adv_healthcheck.service
-        sudo systemctl enable iw_dump.timer
+        sudo systemctl enable iw_dump.service
         # sudo systemctl enable docker_leader.service
         sudo systemctl enable docker_init.service
         sudo systemctl enable rx_copy.service
@@ -624,7 +626,7 @@ elif [ $1 == "enable" ]; then
     elif [ $2 == "batman_adv_healthcheck" ]; then
     	sudo systemctl enable batman_adv_healthcheck.service
     elif [ $2 == "iw_dump" ]; then
-    	sudo systemctl enable iw_dump.timer 1> /dev/null
+    	sudo systemctl enable iw_dump.service
     elif [ $2 == "rx_copy" ]; then
         sudo systemctl enable rx_copy.service
     else
@@ -634,6 +636,7 @@ elif [ $1 == "disable" ]; then
     if [ -z $2 ]; then
 	    sudo systemctl disable batman_adv_setup.service
 	    sudo systemctl disable batman_adv_healthcheck.service
+        sudo systemctl disable iw_dump.service
         sudo systemctl disable docker_leader.service
         sudo systemctl disable docker_init.service
         sudo systemctl disable rx_copy.service
@@ -642,7 +645,7 @@ elif [ $1 == "disable" ]; then
     elif [ $2 == "batman_adv_healthcheck" ]; then
     	sudo systemctl disable batman_adv_healthcheck.service
     elif [ $2 == "iw_dump" ]; then
-    	sudo systemctl disable iw_dump.timer 1> /dev/null
+    	sudo systemctl disable iw_dump.service
     elif [ $2 == "docker_leader" ]; then
         sudo systemctl disable docker_leader.service
     elif [ $2 == "docker_init" ]; then
@@ -657,7 +660,7 @@ elif [ $1 == "managed" ]; then
 
     sudo systemctl stop batman_adv_setup.service 2>/dev/null
     sudo systemctl stop batman_adv_healthcheck.service 2>/dev/null
-    sudo systemctl stop iw_dump.timer 2>/dev/null
+    sudo systemctl stop iw_dump.service 2>/dev/null
     sudo systemctl stop docker_leader.service 2>/dev/null
     sudo systemctl stop docker_init.service 2>/dev/null
 

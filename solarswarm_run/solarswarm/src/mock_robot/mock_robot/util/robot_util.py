@@ -25,7 +25,7 @@ if w and w.isalnum():
 else:
     WLANDEV = None
 
-DUMP = '/tmp/iw_dump/iw_dump.txt'
+DUMP = getenv('IW_DUMP') # get station dump output for neighbors
 
 class BaseStatusPub(ABC, Node):
     def __init__(self, nid, mac):
@@ -258,10 +258,13 @@ class Util(object):
     def get_neighbors() -> dict:
         neighbors = dict()
         try:
-            iw_output = popen(f'cat {DUMP}').read()
-            print("Got iw_dump.txt")
+            if DUMP:
+                iw_output = popen(f'cat {DUMP}').read()
+                print("Got iw_dump.txt")
+            else:
+                raise Exception("No location for iw_dump.txt was provided")
         except Exception as e:
-            print(e)
+            print("Failed to get iw_dump.txt:", e)
             return None
         
         stations = iw_output.split('Station ')

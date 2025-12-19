@@ -17,10 +17,12 @@ services:
       dockerfile: base_robot/base_robot.Dockerfile
       # network: host
     volumes:
-      - /tmp/iw_dump/:/tmp/iw_dump/
+      - ./tmp/iw_dump/:/tmp/iw_dump/
       - ./logs/:/tmp/logs/
     networks:
       - external
+    environment:
+      IW_DUMP: "/tmp/iw_dump/iw_dump.txt"
   
   data_sink:
     image: data_sink

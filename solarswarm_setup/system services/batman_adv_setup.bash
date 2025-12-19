@@ -40,6 +40,5 @@ if [ -z $MESH_IP ]; then # env mit service_helper.bash zuweisen
 else
   sudo ip addr add "$MESH_IP/24" dev wlp0s20f3 # bat0
   sudo systemctl stop firewalld
-  echo "Done (now sleeping for service to remain active)"
-  sleep infinity
+  echo "Done"
 fi
