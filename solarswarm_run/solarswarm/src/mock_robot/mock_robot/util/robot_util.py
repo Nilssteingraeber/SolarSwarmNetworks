@@ -225,6 +225,7 @@ class Util(object):
 
     @staticmethod
     def get_nid(mac) -> str:
+        # changes made to this must also be made in sw_robot.util.sw_util
         if type(mac).__name__ == 'str':
             return mac.replace(':', '') # hash(mac)
         else:

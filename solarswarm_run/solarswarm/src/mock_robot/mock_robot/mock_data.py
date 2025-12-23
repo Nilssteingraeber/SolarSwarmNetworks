@@ -25,6 +25,14 @@ from os import popen
 from json import dumps, loads
 from mock_robot.util.mock_position import MockPosition
 
+import logging
+
+logging.basicConfig(
+    filename="/home/ubuntu/logs/robot.log",
+    level=logging.INFO,
+    format="[mock_data] %(levelname)s: %(message)s (%(asctime)s)",
+) # formatting options: https://docs.python.org/3/library/logging.html#logrecord-attributes
+# usage: logging.info(<message>), logging.warning(<message>), ...
 
 class MockRobotStatusPub(BaseStatusPub, MockPosition):
     def __init__(self, nid, mac):
@@ -177,7 +185,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
 
         # neighbors
         neighbors = []
-        indicators = [] 
+        indicators = []
         msg = NeighborList()
         self.neighbor_dict = Util.get_neighbors()
         for item in self.neighbor_dict.items():
@@ -193,7 +201,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         # data["datetime"] = str(datetime.now())
         
         msg = RobotMisc()
-        # msg.ipv4 = Util.get_ip()
+        msg.ipv4 = Util.get_ip()
         msg.mac = self.mac # Util.get_mac()
         if self.addHeader(msg):
             self.getPublisher('misc').publish(msg)

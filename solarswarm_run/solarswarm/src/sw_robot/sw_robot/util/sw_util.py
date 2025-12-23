@@ -73,6 +73,10 @@ class BaseStatusSub(ABC, Node):
             return True
         except Exception as e:
             print('Connection to db failed:', e)
+            try:
+                self.get_logger().error('Connection to db failed: %s', (e,))
+            except:
+                pass
             return False
 
     def check_nid(self, nid) -> bool:
@@ -193,3 +197,13 @@ class BaseStatusSub(ABC, Node):
     def batch_timer_callback(self):
         pass
     
+class Util(object):
+    @staticmethod
+    def get_nid(mac) -> str:
+        # copy from mock_robot.util.robot_util.py
+        # changes made to this must also be made there
+        if type(mac).__name__ == 'str':
+            return mac.replace(':', '') # hash(mac)
+        else:
+            print('Given MAC is not a string')
+            return None
