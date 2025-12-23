@@ -220,7 +220,7 @@ collect() { # copy files from all reachable ssh hosts to local rx/
                 if [ ! -z $1 ] && [ $1 == "logs" ]; then # copy logs    
                     if [ ! -d rx/logs/run/$host ]; then mkdir rx/logs/run/$host; fi
                     if [ ! -d rx/logs/setup/$host ]; then mkdir rx/logs/setup/$host; fi
-                    scp -r $SSH_TIMEOUT $HOST_CHECKING $host:$remote_run/logs/* rx/logs/run/$host
+                    scp -r $SSH_TIMEOUT $HOST_CHECKING $host:$remote_run/logs/* rx/logs/run/$host # note: this will also copy .gitignore
                     scp -r $SSH_TIMEOUT $HOST_CHECKING $host:$remote_setup/logs/* rx/logs/setup/$host
                 elif [ ! -z $1 ] && [ $1 == "keys" ]; then # copy keys
                     scp $SSH_TIMEOUT $HOST_CHECKING $host:$remote_setup/ssh_identities/keys/*.pub \

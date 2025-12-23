@@ -1,0 +1,4 @@
+*.pub
+
+!.gitignore
+!example_key.pub

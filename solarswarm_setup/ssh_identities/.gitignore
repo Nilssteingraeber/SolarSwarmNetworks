@@ -1,0 +1,8 @@
+*
+
+!.gitignore
+!config
+!names
+!names_with_ip
+!example_key
+!keys/
