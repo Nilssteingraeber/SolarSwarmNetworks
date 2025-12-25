@@ -76,31 +76,31 @@ services:
     depends_on:
       - db
 
-  # backend:
-  #   build: 
-  #     context: .
-  #     dockerfile: backend/backend.Dockerfile
-  #   environment:
-  #     DATABASE_URL: postgresql://postgres:securepassword@db:5432/rosData
-  #     ROS_DISTRO: jazzy
-  #   ports:
-  #     - "8000:8000"
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #   volumes:
-  #     - ./backend/backend:/app
-  #     - ./logs/:/tmp/logs/
-  #   # Für Development mit Auto-Reload
-  #   command: >
-  #     bash -lc "
-  #       source /opt/ros/jazzy/setup.bash && 
-  #       cd /app && 
-  #       uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-  #     "
-  #   networks:
-  #     - internal
-  #     # - external
+  backend:
+    build: 
+      context: .
+      dockerfile: backend/backend.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:securepassword@db:5432/rosData
+      ROS_DISTRO: jazzy
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/backend:/app
+      - ./logs/:/tmp/logs/
+    # Für Development mit Auto-Reload
+    command: >
+      bash -lc "
+        source /opt/ros/jazzy/setup.bash && 
+        cd /app && 
+        uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+      "
+    networks:
+      - internal
+      # - external
 
   # ### 3D - Meshes on Map ###
   # # Deutschland – Zero – Version 2.0

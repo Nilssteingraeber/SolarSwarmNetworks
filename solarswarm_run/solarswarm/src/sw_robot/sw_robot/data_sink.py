@@ -256,7 +256,7 @@ class RobotStatusSub(BaseStatusSub):
                     self.nodes[msg.header.nid]['cpu'] = msg.data
                 case 'RobotActivity':
                     # check if activity_sub exists and if activity is legal
-                    if self.getSubscription('activity') and msg.activity in self.state_map.keys():
+                    if self.getSubscription('activity') and msg.activity in self.state_map.keys() and msg.header.nid in self.nid_map:
                         # check if activity has changed
                         if self.nodes[msg.header.nid]['activity'] != msg.activity:
                             # if changed, update activity locally and in DB
@@ -265,7 +265,7 @@ class RobotStatusSub(BaseStatusSub):
                                 try:
                                     with self.conn.cursor() as cursor:
                                         cursor.execute('''UPDATE robot
-                                            SET activity = %s
+                                            SET state_id = %s
                                             WHERE robot_id = %s
                                             ''', (
                                                     self.__state_map[msg.activity],
@@ -294,8 +294,8 @@ class RobotStatusSub(BaseStatusSub):
                     if self.validate_mac(msg.mac):
                         self.nodes[msg.header.nid]['mac'] = msg.mac
                 case 'NeighborList':
-                    logging.debug('Received neighbors: %s', (str(msg.neighbors),))
-                    logging.debug('Received indicators: %s', (str(msg.indicators),))
+                    # logging.debug('Received neighbors: %s', (str(msg.neighbors),))
+                    # logging.debug('Received indicators: %s', (str(msg.indicators),))
                     if len(msg.neighbors) != len(msg.indicators):
                         logging.warning('Inequal length of neighors and indicators from node with nid %s', (msg.header.nid,))
                     for i in range(0, len(msg.neighbors)):
@@ -304,7 +304,7 @@ class RobotStatusSub(BaseStatusSub):
                         # from nodes > get publisher > get neighbors > access i-th neighbor
                         if self.validate_neighbor(msg.neighbors[i]) and self.validate_indicator(msg.indicators[i]):
                             self.nodes[msg.header.nid]['neighbors'][Util.get_nid(msg.neighbors[i])] = msg.indicators[i]
-                            logging.debug(f'Added neighbor {Util.get_nid(msg.neighbors[i])} to node with nid {msg.header.nid}')
+                            # logging.debug(f'Added neighbor {Util.get_nid(msg.neighbors[i])} to node with nid {msg.header.nid}')
                 case _:
                     logging.error('Caught message type without implemented match case: %s' % (type(msg).__name__))
 
