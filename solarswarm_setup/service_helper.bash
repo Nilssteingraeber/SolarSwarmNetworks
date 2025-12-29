@@ -360,9 +360,17 @@ elif [ $1 == "wlandev" ]; then
         exit 1
     fi
     # export WLANDEV=$wlandev
-    sudo sed -i "/WLANDEV=/d" /etc/environment
-    echo "WLANDEV=\"$wlandev\"" | sudo tee -a /etc/environment > /dev/null
+    sudo sed -i "/WLANDEV=/d" /etc/environment # delete old
+    echo "WLANDEV=\"$wlandev\"" | sudo tee -a /etc/environment > /dev/null # append new
     echo "Exported WLANDEV=$wlandev"
+    # export HOST_MAC
+    if [ ! -z $wlandev ]; then
+        # list interfaces; only show line containing $wlandev and line after that; get mac from second line
+        host_mac=$(ip link | grep -A 1 $wlandev | awk '/link\/ether/ {print $2}')
+        sudo sed -i "/HOST_MAC=/d" /etc/environment # delete old
+        echo "HOST_MAC=\"$host_mac\"" | sudo tee -a /etc/environment > /dev/null # append new
+        echo "Exported HOST_MAC=$host_mac"
+    fi
     source /etc/environment
 elif [ $1 == "send" ]; then
     if [ ! -z $2 ] && [ $2 == "keys" ]; then

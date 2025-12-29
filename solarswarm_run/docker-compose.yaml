@@ -24,6 +24,9 @@ services:
     networks:
       - internal # temporary for testing
     #   - external
+    environment:
+      - MESH_IP=${MESH_IP}
+      - HOST_MAC=${HOST_MAC}
   
   data_sink:
     image: data_sink

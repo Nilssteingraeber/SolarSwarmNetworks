@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>sw_robot</name>
-  <version>0.6.3</version>
+  <version>0.7.0</version>
   <description>The main package containing robot nodes for the SolarSwarm project.</description>
   <maintainer email="vincent.welsch@stud.hs-bochum.de">Vincent Welsch</maintainer>
   <license>Apache-2.0</license>

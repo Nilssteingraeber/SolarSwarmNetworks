@@ -217,7 +217,10 @@ class Util(object):
     @staticmethod
     def get_mac() -> str:
         try:
-            mac = ':'.join(re.findall('..', '%012x' % uuid.getnode()))
+            mac = getenv("HOST_MAC")
+            if mac:
+                return mac
+            mac = ':'.join(re.findall('..', '%012x' % uuid.getnode())) # else container mac
             return mac
         except Exception as e:
             print('Failed to get MAC:', e)
@@ -251,6 +254,9 @@ class Util(object):
     @staticmethod
     def get_ip() -> str:
         try:
+            ip = getenv("MESH_IP")
+            if ip:
+                return ip
             return gethostbyname(gethostname())
         except:
             return None
