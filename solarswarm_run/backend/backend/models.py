@@ -6,7 +6,7 @@ from sqlalchemy.orm import relationship
 Base = declarative_base()
 
 class State(Base):
-    __tablename__ = "state"
+    __tablename__ = "State"
     
     state_id = Column(Integer, primary_key=True, index=True)
     state = Column(String(64))
@@ -15,11 +15,11 @@ class State(Base):
     state_changes = relationship("StateChange", back_populates="state")
 
 class Robot(Base):
-    __tablename__ = "robot"
+    __tablename__ = "Robot"
     
     robot_id = Column(Integer, primary_key=True, index=True)
     nid = Column(String(64), unique=True, index=True)
-    state_id = Column(Integer, ForeignKey("state.state_id"))
+    state_id = Column(Integer, ForeignKey("State.state_id"))
     display_name = Column(String(64))
     ipv4 = Column(String(16))
     ipv6 = Column(String(40))
@@ -30,10 +30,10 @@ class Robot(Base):
     state = relationship("State", back_populates="robots")
 
 class Status(Base):
-    __tablename__ = "status"
+    __tablename__ = "Status"
     
     status_id = Column(Integer, primary_key=True, index=True)
-    robot_id = Column(Integer, ForeignKey("robot.robot_id"))
+    robot_id = Column(Integer, ForeignKey("Robot.robot_id"))
     battery = Column(Float)
     cpu_1 = Column(Float)
     point = Column(JSON)
@@ -43,21 +43,21 @@ class Status(Base):
     robot = relationship("Robot", back_populates="statuses")
 
 class Neighbor(Base):
-    __tablename__ = "neighbor"
+    __tablename__ = "Neighbor"
     
-    robot_id = Column(Integer, ForeignKey("robot.robot_id"), primary_key=True)
-    neighbor = Column(Integer, ForeignKey("robot.robot_id"), primary_key=True)
+    robot_id = Column(Integer, ForeignKey("Robot.robot_id"), primary_key=True)
+    neighbor = Column(Integer, ForeignKey("Robot.robot_id"), primary_key=True)
     strength = Column(Float)
     
     robot = relationship("Robot", foreign_keys=[robot_id])
     neighbor_robot = relationship("Robot", foreign_keys=[neighbor])
 
 class StateChange(Base):
-    __tablename__ = "statechange"
+    __tablename__ = "Statechange"
     
     change_id = Column(Integer, primary_key=True, index=True)
-    state_id = Column(Integer, ForeignKey("state.state_id"))
-    robot_id = Column(Integer, ForeignKey("robot.robot_id"))
+    state_id = Column(Integer, ForeignKey("State.state_id"))
+    robot_id = Column(Integer, ForeignKey("Robot.robot_id"))
     begin = Column(BigInteger)
     
     state = relationship("State", back_populates="state_changes")
