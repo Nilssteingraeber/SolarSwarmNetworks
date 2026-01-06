@@ -104,14 +104,11 @@ onMounted(() => {
     simulator = new DroneSimulatorBackend(3)
     const pollingService = new DronesPollingService({
         // @ts-expect-error
-        baseUrl: import.meta.env.VITE_USE_SIM === 'true'
-            ? 'http://localhost:3001'  // ignored when using simulator
-            // @ts-expect-error
-            : import.meta.env.DB_URL,
+        baseUrl: "http://localhost:8000",
         addRobotsBatch: useDroneHistoryStore().addRobotsBatch,
         intervalMs: 1000,
         // @ts-expect-error
-        useSimulator: import.meta.env.VITE_USE_SIM === 'true',
+        useSimulator: false,
         droneSimulatorBackend: simulator
     })
     pollingService.start()

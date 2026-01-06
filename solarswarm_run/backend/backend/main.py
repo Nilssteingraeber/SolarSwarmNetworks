@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any, Dict
 import models
@@ -28,6 +29,12 @@ docker builder prune -a -f
 '''
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5170/"],
+    allow_methods=[""],
+    allow_headers=[""],
+)
 models.Base.metadata.create_all(bind=engine)
 ROS_DISTRO = os.getenv("ROS_DISTRO", "jazzy")
 
@@ -281,7 +288,3 @@ def call_ros_service(nid: str, call: ServiceCall):
     out = run_ros2_command(nid, ros_cmd, timeout=call.timeout or 10)
     success = out["returncode"] == 0
     return {"nid": nid, "service": call.service_name, "success": success, "result": out}
-
-@app.get("/")
-async def root():
-    return {"message": "FastAPI with ROS2 and PostgreSQL is running!"}

@@ -126,6 +126,7 @@ services:
   # ### Digital Elevation Model ###
   # # © Bundesamt für Kartographie und Geodäsie (BKG), Datenlizenz Deutschland – Namensnennung – Version 2.0
   # terrain_server:
+  #   image: terrain_server
   #   build:
   #     context: ./backend/backend/
   #     dockerfile: terrain_server.Dockerfile
@@ -140,45 +141,49 @@ services:
   #   networks:
   #     - external
 
-  # ### OpenStreetMap-Data Server ###
-  # # TODO OSM-License
-  # tileserver:
-  #   build:
-  #     context: ./backend/backend/file_server
-  #     dockerfile: tileserver.Dockerfile
-  #   volumes:
-  #     - ./bigData/osm/:/osmdata/
-  #     - ./backend/backend/file_server/osm/tileserver:/tileserver
-  #   ports:
-  #     - "9015:9015"
-  #   command: ["-c", "/tileserver/config.json", "-p", "9015"]
-  #   networks:
-  #     - external
+  ### OpenStreetMap-Data Server ###
+  # TODO OSM-License
+  tileserver:
+    image: tileserver
+    build:
+      context: ./backend/backend/file_server
+      dockerfile: tileserver.Dockerfile
+    volumes:
+      - ./bigData/osm/:/osmdata/
+      - ./backend/backend/file_server/osm/tileserver:/tileserver
+    ports:
+      - "9015:9015"
+    command: ["-c", "/tileserver/config.json", "-p", "9015"]
+    networks:
+      - internal
+      # - external
 
-  # ### Vue ###
-  # frontend:
-  #   build:
-  #     context: ./frontend
-  #     dockerfile: frontend.Dockerfile
-  #   depends_on:
-  #     - backend
-  #   ports:
-  #     - "5170:5170"
-  #   volumes:
-  #     - ./frontend:/app
-  #   command: npm run dev -- --port 5170 --host
-  #   environment:                   
-  #     - VITE_USE_SIM=true
-  #     # Ports
-  #     - VITE_PORT=9000
-  #     - VITE_MESH_3D_SERVER_PORT=9005
-  #     - VITE_DEM_SERVER_PORT=9010
-  #     - VITE_OSM_SERVER_PORT=9015
-  #     # Edit: Chris' Backend URL
-  #     - DB_URL=http://localhost:XXXX/
-  #   networks:
-  #     - internal
-  #     - external
+  ### Vue ###
+  frontend:
+    image: frontend
+    build:
+      context: ./frontend
+      dockerfile: frontend.Dockerfile
+    depends_on:
+      - backend
+    ports:
+      - "5170:5170"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --port 5170 --host
+    environment:                   
+      - VITE_USE_SIM=true
+      # Ports
+      - VITE_PORT=9000
+      - VITE_MESH_3D_SERVER_PORT=9005
+      - VITE_DEM_SERVER_PORT=9010
+      - VITE_OSM_SERVER_PORT=9015
+      # Edit: Chris' Backend URL
+      - DB_URL=postgresql://postgres:securepassword@db:5432/rosData
+    networks:
+      - internal
+      # - external
 
 volumes:
   postgres_data:
