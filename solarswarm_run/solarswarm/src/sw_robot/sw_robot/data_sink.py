@@ -53,7 +53,7 @@ class RobotStatusSub(BaseStatusSub):
             if self.connect_db():
                 try:
                     with self.conn.cursor() as cursor:
-                        cursor.execute('SELECT * FROM state')
+                        cursor.execute('SELECT * FROM \"State\"')
                         if cursor.rowcount:
                             for row in cursor.fetchall():
                                 # row[0] = id, row[1] = description
@@ -100,17 +100,16 @@ class RobotStatusSub(BaseStatusSub):
         # find nids without robot_id
         try:
             # load current state from db
-            cursor.execute('SELECT robot_id, nid FROM robot')
+            cursor.execute('SELECT robot_id, nid FROM \"Robot\"')
             if not cursor.rowcount:
-                logging.error('Failed to load robots from db: No robots found.')
-                return
+                logging.warning('Failed to load robots from db: No robots found.')
             for row in cursor.fetchall(): 
                 self.nid_map[row[1]] = row[0]
             
             # insert missing robots
             for node in self.nodes.keys():
                 if node not in self.nid_map.keys():
-                    cursor.execute('INSERT INTO robot (nid, ipv4, ipv6, mac) VALUES (%s, %s, %s, %s)', (
+                    cursor.execute('INSERT INTO \"Robot\" (nid, ipv4, ipv6, mac) VALUES (%s, %s, %s, %s)', (
                         node,
                         self.nodes[node]['ipv4'],
                         self.nodes[node]['ipv6'],
@@ -122,7 +121,7 @@ class RobotStatusSub(BaseStatusSub):
             if unregistered:
                 self.conn.commit()
                 # get all robot_ids
-                cursor.execute('SELECT robot_id, nid FROM robot')
+                cursor.execute('SELECT robot_id, nid FROM \"Robot\"')
                 # update nid-to-robot_id map (nid_map)
                 if not cursor.rowcount:
                     logging.error('Failed to load robots from db: No robots found.')
@@ -138,7 +137,7 @@ class RobotStatusSub(BaseStatusSub):
     
     def update_existing_nodes(self, cursor):
         try:
-            cursor.execute('SELECT nid, ipv4, ipv6, mac FROM robot')
+            cursor.execute('SELECT nid, ipv4, ipv6, mac FROM \"Robot\"')
             if cursor.rowcount:
                 for row in cursor.fetchall():
                     # nid at 0, ipv4 at 1 ipv6 at 2, mac at 3
@@ -146,7 +145,7 @@ class RobotStatusSub(BaseStatusSub):
                     if nid not in self.nid_map.keys() or nid not in self.nodes.keys():
                         continue
                     if row[1] != self.nodes[nid]['ipv4'] or row[2] != self.nodes[nid]['ipv6'] or row[3] != self.nodes[nid]['mac']:
-                        cursor.execute('''UPDATE robot
+                        cursor.execute('''UPDATE \"Robot\"
                             SET ipv4 = %s, ipv6 = %s, mac = %s
                             WHERE robot_id = %s''', (
                                 self.nodes[nid]['ipv4'],
@@ -178,7 +177,7 @@ class RobotStatusSub(BaseStatusSub):
                         self.register_new_nodes(cursor) # insert into table robot if necessary
                         for nid in self.nodes.keys():
                             if t - self.nodes[nid]['last'] < 30:
-                                cursor.execute('''INSERT INTO status (robot_id, battery, cpu_1, point, orientation, last_heard)
+                                cursor.execute('''INSERT INTO \"Status\" (robot_id, battery, cpu_1, point, orientation, last_heard)
                                     VALUES (%s, %s, %s, %s, %s, %s)''', (
                                         self.nid_map[nid],
                                         self.nodes[nid]['battery'],
@@ -190,7 +189,7 @@ class RobotStatusSub(BaseStatusSub):
                                 )
                                 for neighbor in self.nodes[nid]['neighbors'].keys():
                                     if neighbor in self.__nid_map.keys():
-                                        cursor.execute('''INSERT INTO neighbor (robot_id, neighbor, strength)
+                                        cursor.execute('''INSERT INTO \"Neighbor\" (robot_id, neighbor, strength)
                                             VALUES (%s, %s, %s)''', (
                                                 self.__nid_map[nid],
                                                 self.__nid_map[neighbor],
@@ -264,7 +263,7 @@ class RobotStatusSub(BaseStatusSub):
                             if self.connect_db():
                                 try:
                                     with self.conn.cursor() as cursor:
-                                        cursor.execute('''UPDATE robot
+                                        cursor.execute('''UPDATE \"Robot\"
                                             SET state_id = %s
                                             WHERE robot_id = %s
                                             ''', (
