@@ -1,4 +1,0 @@
-uint64 max 10000
-uint64 min 0
----
-uint64 number
