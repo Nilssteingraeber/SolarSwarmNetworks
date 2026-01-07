@@ -36,7 +36,8 @@ import { Hash } from 'crypto'
 const getDroneColor = (robot: Robot) => {
     const now = useTimeStore().currentTime
     const lastHeard = robot.last_heard || 0  // assume this is always up-to-date
-    const timeSinceLast = (now - lastHeard) / 1000  // seconds
+    const timeSinceLast = (now - lastHeard) * 1000  // seconds
+
     if (timeSinceLast < 5) return Color.GREEN
     if (timeSinceLast < 7) return Color.YELLOW
     if (timeSinceLast < 9) return Color.RED
@@ -257,7 +258,10 @@ export const useDroneEntityStore = defineStore('droneEntities', {
             if (!this.viewer || !robot.point) return
 
             const { lon, lat, alt } = robot.point
+            console.debug(robot.point)
             const pos = Cartesian3.fromDegrees(lon, lat, alt ?? 150)
+
+
 
             const sampled = new SampledPositionProperty()
             sampled.forwardExtrapolationType = ExtrapolationType.HOLD

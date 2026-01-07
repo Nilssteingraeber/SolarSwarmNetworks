@@ -44,12 +44,12 @@ export const useDroneDataStore = defineStore('droneData', {
                 return
             }
 
-            // NEW DRONE
             const newRobot = robot as Robot
             this.drones.push({
                 robot: newRobot,
                 last_heard: Date.now()
             })
+
         },
 
         removeDrone(nid: string) {

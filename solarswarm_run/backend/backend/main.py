@@ -31,9 +31,9 @@ docker builder prune -a -f
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5170/"],
-    allow_methods=[""],
-    allow_headers=[""],
+    allow_origins=["http://localhost:5170"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 models.Base.metadata.create_all(bind=engine)
 ROS_DISTRO = os.getenv("ROS_DISTRO", "jazzy")

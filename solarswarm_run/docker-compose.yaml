@@ -108,38 +108,38 @@ services:
   # ### 3D - Meshes on Map ###
   # # Deutschland – Zero – Version 2.0
   # # https://www.govdata.de/dl-de/zero-2-0
-  # three_d_server:
-  #   build:
-  #     context: ./backend/backend/
-  #     dockerfile: terrain_server.Dockerfile
-  #   depends_on:
-  #     - backend
-  #   volumes:
-  #     - ./backend/backend:/app
-  #     - ./bigData/data:/app/data
-  #   command: python -u ./file_server/3DServer.py
-  #   ports:
-  #     - "9005:9005"
-  #   networks:
-  #     - external
+  three_d_server:
+    build:
+      context: ./backend/backend/
+      dockerfile: terrain_server.Dockerfile
+    depends_on:
+      - backend
+    volumes:
+      - ./backend/backend:/app
+      - ./bigData/data:/app/data
+    command: python -u ./file_server/3DServer.py
+    ports:
+      - "9005:9005"
+    networks:
+      - internal
 
   # ### Digital Elevation Model ###
   # # © Bundesamt für Kartographie und Geodäsie (BKG), Datenlizenz Deutschland – Namensnennung – Version 2.0
-  # terrain_server:
-  #   image: terrain_server
-  #   build:
-  #     context: ./backend/backend/
-  #     dockerfile: terrain_server.Dockerfile
-  #   depends_on:
-  #     - backend
-  #   volumes:
-  #     - ./backend/backend:/app
-  #     - ./bigData/dem/tiles:/app/terraindata
-  #   command: python -u file_server/TerrainServer.py
-  #   ports:
-  #     - "9010:9010"
-  #   networks:
-  #     - external
+  terrain_server:
+    image: terrain_server
+    build:
+      context: ./backend/backend/
+      dockerfile: terrain_server.Dockerfile
+    depends_on:
+      - backend
+    volumes:
+      - ./backend/backend:/app
+      - ./bigData/dem/tiles:/app/terraindata
+    command: python -u file_server/TerrainServer.py
+    ports:
+      - "9010:9010"
+    networks:
+      - internal
 
   ### OpenStreetMap-Data Server ###
   # TODO OSM-License

@@ -113,13 +113,31 @@ export class DronesPollingService {
     // ==============================
 
     private async fetchRobots(): Promise<Robot[]> {
-        if (this.useSimulator && this.droneSimulatorBackend) {
-            return this.droneSimulatorBackend.getRobots()
+        try {
+            if (this.useSimulator) {
+                return this.droneSimulatorBackend
+                    ? await this.droneSimulatorBackend.getRobots()
+                    : []
+            }
+
+            const controller = new AbortController()
+            setTimeout(() => controller.abort(), 5000)
+
+            const res = await fetch(`${this.baseUrl}/robot/`, {
+                signal: controller.signal,
+            })
+
+            if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+            const data = await res.json()
+
+            return Array.isArray(data) ? data : []
+        } catch (err) {
+            console.error("[fetchRobots] failed:", err)
+            return []
         }
-        const res = await fetch(`${this.baseUrl}/robot/`)
-        if (!res.ok) throw new Error("Failed to fetch robots")
-        return res.json()
     }
+
 
     private async fetchLatestStatus(robotId: number): Promise<Partial<Robot>> {
         if (this.useSimulator && this.droneSimulatorBackend) {
@@ -146,7 +164,7 @@ export class DronesPollingService {
         return {
             battery: latest.battery,
             cpu_1: latest.cpu_1,
-            point: latest.point,
+            point: { lat: latest.point.x, lon: latest.point.y, alt: 125.0 },
             orientation: latest.orientation,
             last_heard: latest.last_heard
         }
