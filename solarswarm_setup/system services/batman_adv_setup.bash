@@ -39,6 +39,8 @@ if [ -z $MESH_IP ]; then # env mit service_helper.bash zuweisen
   exit 1
 else
   sudo ip addr add "$MESH_IP/24" dev wlp0s20f3 # bat0
-  sudo systemctl stop firewalld
+  if sudo ufw status | grep -e " active$"; then
+    sudo ufw disable
+  fi
   echo "Done"
 fi

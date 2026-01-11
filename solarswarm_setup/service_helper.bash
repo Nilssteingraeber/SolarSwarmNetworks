@@ -91,6 +91,7 @@ echo_valid_service() { # to avoid redundancy
 }
 
 send_to_hosts() { # copy files to all available ssh hosts' rx/
+    # args: <keys | hosts> <everybody | specific_name> [register]
     source /etc/environment # reload envs
     if [ -z $MESH_IDENTITY ]; then # check if name is set
         echo "Error: MESH_IDENTITY has not been set"
@@ -104,6 +105,15 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
     
     sudo hostname $MESH_IDENTITY # set hostname
     
+    if [ ! -z ] && [ $3 == "keys" ]; then
+        echo "Which keys should be sent? (own/all) "
+        read which_keys
+    fi
+    if [ ! $which_keys == "own" ] && [ ! $which_keys == "all" ] || [ -z $which_keys ]; then
+        echo "Error: Choose either 'own' or 'all'"
+        exit 1
+    fi
+
     if [ $2 == "everybody" ]; then
         # go through list of hosts using a for-each loop
         # for i in $(cat ...names_with_ip) would read word by word, not line by line
@@ -113,7 +123,7 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
             # read host and ip from single i-th line
             read host ip <<< $(head -$i ssh_identities/names_with_ip | tail -1)
             # skip empty hosts and self
-            if [ -z $host ] || [ -z $ip]; then continue; fi
+            if [ -z $host ] || [ -z $ip ]; then continue; fi
             if [ ! -z $host ] && [ $host == $MESH_IDENTITY ]; then continue; fi
             echo "Connecting to $host $ip..."
             # check if host is reachable (timeout 1 second (-W) and ping count limited to 1 (-c))
@@ -122,14 +132,25 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
                 remote_setup=/home/$host/solarswarm_setup
                 
                 if [ ! -z $1 ] && [ $1 == "keys" ]; then # copy public keys
-                    if [ ! -z $3] && [ $3 == "register" ]; then # adds to authorized_keys of host
-                        for pub_key in $(ls ssh_identities/keys/); do
-                            ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$pub_key $host@$ip
-                            # note: currently all keys in 'ssh_identities/keys/' are trusted
-                        done
+                    if [ $which_keys == "all" ]; then
+                        scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/*.pub \
+                            $host:$remote_setup/rx/ssh/ # copy public keys
+                        if [ ! -z $3] && [ $3 == "register" ]; then # add to authorized_keys of host
+                            # register own key key first to possibly not require a password for every other key
+                            ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$MESH_IDENTITY.pub $host@$ip
+                            for pub_key in $(ls ssh_identities/keys/); do
+                                if [ pub_key == MESH_IDENTITY.pub ]; then continue; fi
+                                ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$pub_key $host@$ip
+                                # note: all keys in 'ssh_identities/keys/' are currently trusted
+                            done
+                        fi
+                    elif [ $which_keys == "own" ]; then
+                        scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/*.pub \
+                            $host:$remote_setup/rx/ssh/ # copy public key
+                        if [ ! -z $3] && [ $3 == "register" ]; then # add to authorized_keys of host
+                            ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$MESH_IDENTITY.pub $host@$ip
+                        fi
                     fi
-                    scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/*.pub \
-                        $host:$remote_setup/ssh_identities/rx/ssh/ # copy public keys
                 elif [ ! -z $1 ] && [ $1 == "hosts" ]; then # copy names, names_with_ip, and config to all reachable hosts
                     scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/names \
                         $host:$remote_setup/ssh_identities/rx/ssh/
@@ -147,7 +168,7 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
         done
     else # with specific name
         if [ -z $2 ] || ! $(grep -E "^$2$" ssh_identities/names &>/dev/null); then
-            echo "Error: Expected 'everybody' or a known name after 'logs'"
+            echo "Error: Expected 'everybody' or a known name after 'keys' or 'hosts'"
             exit 1
         fi
         read host ip <<< $(grep -E "^$2 " ssh_identities/names_with_ip &>/dev/null)
@@ -159,17 +180,25 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
             remote_setup=/home/$host/solarswarm_setup
 
             if [ ! -z $1 ] && [ $1 == "keys" ]; then # copy public keys
-                if [ ! -z $3] && [ $3 == "register" ]; then # adds to authorized_keys of host
-                    # register own key key first to not require a password for every other key
-                    ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$MESH_IDENTITY.pub $host@$ip
-                    for pub_key in $(ls ssh_identities/keys/); do
-                        if [ pub_key == MESH_IDENTITY.pub ]; then continue; fi
-                        ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$pub_key $host@$ip
-                        # note: currently all keys in 'ssh_identities/keys/' are trusted
-                    done
+                if [ $which_keys == "all" ]; then
+                    scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/*.pub \
+                        $host:$remote_setup/ssh_identities/rx/ssh/ # copy public keys
+                    if [ ! -z $3] && [ $3 == "register" ]; then # add to authorized_keys of host
+                        # register own key key first to possibly not require a password for every other key
+                        ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$MESH_IDENTITY.pub $host@$ip
+                        for pub_key in $(ls ssh_identities/keys/); do
+                            if [ pub_key == MESH_IDENTITY.pub ]; then continue; fi
+                            ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$pub_key $host@$ip
+                            # note: currently all keys in 'ssh_identities/keys/' are trusted
+                        done
+                    fi
+                elif [ $which_keys == "own" ]; then
+                    scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/$MESH_IDENTITY.pub \
+                        $host:$remote_setup/ssh_identities/rx/ssh/ # copy public key
+                    if [ ! -z $3] && [ $3 == "register" ]; then # add to authorized_keys of host
+                        ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$MESH_IDENTITY.pub $host@$ip
+                    fi
                 fi
-                scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/*.pub \
-                    $host:$remote_setup/ssh_identities/rx/ssh/ # copy public keys
             elif [ ! -z $1 ] && [ $1 == "hosts" ]; then # copy names, names_with_ip, and config to all reachable hosts
                 scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/names \
                     $host:$remote_setup/ssh_identities/rx/ssh/
@@ -225,6 +254,8 @@ collect() { # copy files from all reachable ssh hosts to local rx/
                 elif [ ! -z $1 ] && [ $1 == "keys" ]; then # copy keys
                     scp $SSH_TIMEOUT $HOST_CHECKING $host:$remote_setup/ssh_identities/keys/*.pub \
                         ssh_identities/rx/ssh/ # copy public keys
+                    echo "Note: For other hosts to be able to use their private keys, you must add their public keys to your '~/.ssh/authorized_keys'."
+                    echo "You can use 'bash service_helper.bash' to add all local keys to your '~/.ssh/authorized_keys'"
                 fi
             else
                 echo "    Failed to reach $host"
@@ -427,7 +458,8 @@ elif [ $1 == "ssh" ]; then
         elif [ -f ssh_identities/keys/$name.pub ]; then # check if public key with name exists
             echo "Error: Public key already exists for this name (likely already in use)"
             echo "Check if this name is in use before deleting 'ssh_identities/keys/$name.pub'" 
-            echo "manually and trying again"
+            echo "manually and trying again."
+            echo "To delete use 'rm ssh_identities/keys/$name.pub'"
             exit 1
         fi
     fi
@@ -471,10 +503,10 @@ elif [ $1 == "ssh" ]; then
         echo "Copy hosts (file 'config') and ALL public keys in ssh_identities/keys/ except own to '~/.ssh'? (Y/n/config only)"
         echo "Warning: This will overwrite existing files"
         read move_to_ssh
-        if [ -z $move_to_ssh ] || [ $move_to_ssh == "n" ] || [ $move_to_ssh == "N" ]; then
+        if [ $move_to_ssh == "n" ] || [ $move_to_ssh == "N" ]; then
             echo "Done"
         else
-            if [ -f ~/.ssh/config ] && [ ! -f ~/.ssh/config.backup ]; then
+            if [ -f ~/.ssh/config ] && [ ! -f ~/.ssh/config.bak ]; then
                 # make backup if config was previously present
                 echo "Found existing config in '~/.ssh/'"
                 echo "Creating backup of config..."
@@ -500,6 +532,15 @@ elif [ $1 == "ssh" ]; then
             fi
             echo "Copied files"
         fi
+
+        # Change hostname permanently (required for Docker)
+        hostname=$(sudo head -1) # get old hostname
+        echo "Changing $hostname to $MESH_IDENTITY permanently so robot can be identified easily in a swarm..."
+        echo "To undo this, use 'sudo hostnamectl set-hostname <old hostname>'"
+        # sudo sed -i "s/$hostname/$MESH_IDENTITY/" /etc/hostname # replace old hostname
+        # sudo sed -i "s/\t$hostname/$MESH_IDENTITY/g" /etc/hosts
+        sudo hostnamectl set-hostname $MESH_IDENTITY
+        echo "Open a new terminal to see the changes"
     fi
 elif [ $1 == "setup" ]; then
     if [ -z $WLANDEV ] || [ -z $MESH_IDENTITY ] || [ -z $MESH_IP ]; then
@@ -664,7 +705,11 @@ elif [ $1 == "disable" ]; then
         echo_valid_service
     fi
 elif [ $1 == "managed" ]; then
-    sudo systemctl start firewalld
+    echo "Enable firewall? (Y/n)"
+    read enable_fw
+    if [ $enable_fw != "n" ] && [ $enable_fw != "N" ]; then
+        sudo ufw enable
+    fi
 
     sudo systemctl stop batman_adv_setup.service 2>/dev/null
     sudo systemctl stop batman_adv_healthcheck.service 2>/dev/null
@@ -680,4 +725,5 @@ elif [ $1 == "managed" ]; then
     sudo ip link set $WLANDEV down
     sudo iwconfig $WLANDEV mode managed
     sudo ip link set $WLANDEV up
+    echo "Done"
 fi

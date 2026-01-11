@@ -1,0 +1,91 @@
+### Nezwerktests vom 08.01.2026, Host charlie ###
+Hinweis: Für Screenshots auf alfa wurde von charlie aus eine SSH-Verbindung genutzt
+
+- alfa, bravo und charlie werden über service_helper.bash eingerichtet und treten über batman_adv_setup.bash Ad-hoc-Netzwerk bei
+
+# Node verliert Verbindung
+- alfa (alfa) initiiert einen Schwarm (über docker_init.bash)
+- bravo (pc-NUC8i3BEK) und charlie (IFE) treten Schwarm bei (über docker_init.bash)
+- alfa promotet bravo und charlie zu Managern
+- `docker node ls` zeigt bei allen STATUS "Ready" und MANAGER STATUS "Reachable"
+- bravo verlässt Ad-hoc-Netzwerk
+- `docker node ls` zeigt STATUS "Down" und MANAGER STATUS "Unreachable"
+> bravo unerreichbar.png
+
+# Wiederbeitritt einer Node
+- bravo tritt Ad-hoc-Netzwerk wieder bei
+- bravo startet wieder docker_init.bash
+- docker_init.bash verlässt zuerst einen Schwarm, wenn sich der Host in einem befindet, und tritt dann einem bei
+- `docker node ls` zeigt Host bravo als verschiedene Nodes mit verschiedenen IDs (unterschiedliche Hostnamen sind durch temporäre Namensänderungen in verschiedenen Terminals auf bravo entstanden)
+- neue Node ist Worker
+> swarm leave und init zu neuer node.png
+
+# Verbindungsverlust und Wiederaufbau der Verbindung
+- bravo startet wieder docker_init.bash
+- bravo verlässt Ad-hoc-Netzwerk
+- `docker node ls` zeigt drei Nodes für bravo mit STATUS "Down" und MANAGER STATUS "Unreachable"
+- bravo tritt Ad-hoc-Netzwerk wieder bei
+- `docker node ls` zeigt eine Node für bravo mit STATUS "Ready" und MANAGER STATUS "Reachable"
+> selbe node wenn wieder erreichbar.png
+
+# Entfernen duplizierter Hosts
+- eine alte Node für bravo wird entfernt (Worker)
+- eine weitere alte Node für bravo soll entfernt werden, ist jedoch Manager -> Fehler
+- unerreichbare Manager-Node muss erst demotet werden
+- `docker node ls` zeigt nur noch aktuelle Node für bravo
+- bravo fällt zufällig aus und hat STATUS "Down" (dies wiederholt sich alle paar Minuten oder Sekunden zufällig -> Hardware verantwortlich?)
+> toten manager erst demoten.png
+
+# Abwerten eines unerreichbaren Managers
+- bravo stellt Verbindung wieder her (über batman_adv_setup.bash -> nicht getestet, was Fehler verursacht oder kurzzeitig behebt)
+- Abwerten eines unerreichbaren Managers soll rekonstruiert werden
+- bravo wird zu einem Manager promotet
+- `docker node ls`
+- bravo vrlässt Ad-hoc-Netzerk
+- `docker node ls`
+- bravo wird demotet
+- `docker node ls`
+> tote node demotebar.png
+
+# Verbindungsverlust des Leaders
+- alfa verlässt Ad-hoc-Netzwerk
+- `docker node ls` wirft Fehler (da bravo wieder keine Verbindung hat und nur noch einer von drei Managern erreichbar ist -> Verlust des Quorums)
+- bravo stellt Verbindung wieder her
+- `docker node ls` zeigt, dass alfa MANAGER STATUS "Unreachable" und charlie "Leader" hat
+> charlie neuer leader nach tot von alfa.png
+
+# Wiederaufbau der Verbindung des vorherigen Leaders
+- `docker node ls`
+- alfa tritt Ad-hoc-netzwerk wieder bei
+- bevor alfa wieder erreichbar ist, verliert bravo wieder Verbindung
+- `docker node ls` wirft Fehler (weder alfa noch bravo erreichbar -> Verlust des Quorums)
+- alfa ist wieder erreichbar (Quorum wiederhergestellt)
+- `docker node ls` zeigt, dass charlie Leader bleibt und alfa nur noch Manager ist
+> alfa und bravo im wechsel tot_charlie bleibt leader.png
+
+# Worker-Token nach Wechsel des Leaders
+- bravo soll über docker_init.bash erneut dem Schwarm beitreten (alfa ursprünglicher, charlie derzeitiger Leader)
+- Worker-Token wird auf bravo bei `docker join` von alfa abgelehnt
+> worker_token ungültig nach Wechsel von Leader.png (auf bravo)
+
+# Erneuter Wechsel des Leaders
+- charlie promotet alfa und demotet sich selbst (gelingt)
+- `docker node ls` kann nicht mehr auf charlie ausgeführt werden
+- `docker node ls` auf alfa zeigt, dass charlie Worker und alfa wieder Leader ist
+- ob durch Zufall wieder alfa (und nicht bravo) Leader wurde, ist unklar (Versuch nicht wiederholt)
+> alfa wieder leader nach charlie self-demote.png
+
+# Probleme bei gerade Managerzahl
+- nur alfa und bravo sind Manager
+- da bravo häufig ausfällt, soll er demotet werden (durch Verlust des Quorums kann alfa nicht Status des Schwarms anzeigen)
+- `docker node ls` wirft mehrmals Fehler, da bravo immer wieder ausfällt und nach Wiederherstellung der Verbindung erst nach einem Delay "Reachable" ist
+- `docker node ls` zeigt bravo als "Reachable"
+- bravo wird demotet
+- `docker node ls` zeigt bravo als Worker
+> ohne dritten manager demote von bravo durch alfa nur mit quorum möglich.png
+
+# Erneuter Wechsel des Leaders
+- nur alfa ist Manager (Leader)
+- alfa promotet charlie
+- alfa demotet sich selbst
+> sobald charlie wieder manager kann alfa als leader sich selbst demoten.png
