@@ -57,7 +57,8 @@ const isNodeMenuOpen = computed(() => viewedRobot?.value)
 // Computed list of all drones with IDs and names
 const allDrones = computed(() => {
     // Matches the shape returned by your entity store: { robot, entity }
-    return droneDataStore.all() || []
+
+    return droneEntityStore.getRobots ?? []
 })
 
 // Add after your other refs

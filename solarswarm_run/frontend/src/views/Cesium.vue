@@ -35,6 +35,58 @@ let simTickInterval: number | null = null
 // ✅ NEW: Simulator instance (shared with polling service)
 let simulator: DroneSimulatorBackend | null = null
 
+
+/**
+ * Take a snapshot of the Cesium scene at a specific camera position and orientation.
+ * @param destination Cesium.Cartesian3 - camera position
+ * @param orientation {heading, pitch, roll} in radians
+ * @param filename optional filename for download
+ */
+function takeCesiumSnapshot(
+    destination: Cesium.Cartesian3,
+    orientation: { heading: number; pitch: number; roll: number },
+    filename = 'cesium_snapshot.png'
+) {
+    if (!viewer) return
+
+    const camera = viewer.camera
+
+    // Save current camera state
+    const oldPos = camera.position.clone()
+    const oldDir = camera.direction.clone()
+    const oldUp = camera.up.clone()
+    const oldRight = camera.right.clone()
+
+    // Move camera to target
+    camera.setView({
+        destination,
+        orientation
+    })
+
+    // Force a render
+    viewer.render()
+
+    // Capture canvas as PNG
+    const canvas = viewer.scene.canvas
+    const pngDataUrl = canvas.toDataURL('image/png')
+
+    // Download automatically
+    const a = document.createElement('a')
+    a.href = pngDataUrl
+    a.download = filename
+    a.click()
+
+    // Restore original camera
+    camera.position = oldPos
+    camera.direction = oldDir
+    camera.up = oldUp
+    camera.right = oldRight
+
+    // Redraw scene
+    viewer.render()
+}
+
+
 // ---------------------------
 // CLEANUP
 // ---------------------------
@@ -187,12 +239,26 @@ onMounted(() => {
             if (pressed['d']) camera.moveRight(speed)
             if (pressed[' ']) camera.moveUp(speed)
             if (pressed['control']) camera.moveDown(speed)
+            if (pressed['o'])
+                takeCesiumSnapshot(
+                    Cesium.Cartesian3.fromDegrees(7.274741, 51.445823, 1180),
+                    {
+                        heading: 0,                 // 0 = north
+                        pitch: Cesium.Math.toRadians(-90), // look straight down
+                        roll: 0
+                    },
+                    'top_down_view.png'
+                )
 
             requestAnimationFrame(updateCameraMovement)
         }
         requestAnimationFrame(updateCameraMovement)
+
+
+
     })
 })
+
 </script>
 
 <template>

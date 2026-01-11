@@ -78,7 +78,7 @@ const isOpen = computed(() => {
     return true
 })
 const nickname = computed(() => {
-    return viewedRobot?.value?.display_name ?? "---"
+    return viewedRobot?.value?.display_name ?? viewedRobot?.value?.nid ?? "---"
 })
 
 
