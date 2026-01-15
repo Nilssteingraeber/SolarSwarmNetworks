@@ -7,42 +7,19 @@
 # run with `sudo docker stack delpoy -c docker-compose.yaml Solarswarm`
 
 services:
-  # Note: Docker compose does not consider build order. Use 'sudo docker compose build base_robot' first.
 
-  # base_robot should run on all robots
-  # to excluse nodes from this, change those nodes' availability to drain
-  # or introduce a new label and constraints to differentiate between robot and non-robot
-  base_robot:
-    image: base_robot
-    build:
-      context: .
-      dockerfile: base_robot/base_robot.Dockerfile
-      # network: host
-    volumes:
-      - ./tmp/iw_dump/:/home/ubuntu/iw_dump/
-      - ./logs/:/home/ubuntu/logs/
-    networks:
-      - internal # temporary for testing
-    #   - external
-    environment:
-      - MESH_IP=${MESH_IP}
-      - HOST_MAC=${HOST_MAC}
-  
   data_sink:
-    image: data_sink
     build:
       context: .
       dockerfile: data_sink/sw_robot.Dockerfile
       # network: host
     volumes:
-      - ./logs/:/home/ubuntu/logs/
+      - ./logs/:/tmp/logs/
     networks:
       - internal
-      # - external
     environment:
       # data sink
-      LOG_OUT: /home/ubuntu/logs/data_sink.log
-      FORWARD_TO_DB: forward
+      # FORWARD_TO_DB: forward
       TRIES_TO_GET_STATES: 2
       # DB
       DB_NAME: rosData
@@ -50,39 +27,40 @@ services:
       DB_PASSWORD: securepassword
       DB_HOST: db
       DB_PORT: "5432"
-  
-  db:
-    image: db
+
+  base_robot:
+    # should run on all robots
+    # to excluse nodes from this, change those nodes' availability to drain
+    # or introduce a new label and constraints to differentiate between robot and non-robot
     build:
       context: .
-      dockerfile: backend/db.Dockerfile
+      dockerfile: base_robot/base_robot.Dockerfile
+      network: host
+    volumes:
+      - /tmp/iw_dump/:/tmp/iw_dump/
+      - ./logs/:/tmp/logs/
+  
+  db:
+    image: postgres:13
     environment:
       POSTGRES_DB: rosData
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: securepassword
     ports:
       - "5173:5173"
-      - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - internal
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  adminer: # to view tables and edit db -> access via localhost:8080 in browser and use db login credentials above
-    image: adminer
-    container_name: adminer
-    restart: 'no'
-    ports:
-      - 8080:8080
-    networks:
-      - internal
-    depends_on:
-      - db
 
   backend:
     build: 
-      context: .
-      dockerfile: backend/backend.Dockerfile
+      context: ./backend
+      dockerfile: backend.Dockerfile
     environment:
       DATABASE_URL: postgresql://postgres:securepassword@db:5432/rosData
       ROS_DISTRO: jazzy
@@ -101,17 +79,49 @@ services:
         cd /app && 
         uvicorn main:app --host 0.0.0.0 --port 8000 --reload
       "
-    networks:
-      - internal
-      # - external
-
-  # ### 3D - Meshes on Map ###
-  # # Deutschland – Zero – Version 2.0
-  # # https://www.govdata.de/dl-de/zero-2-0
-  three_d_server:
+  
+  fibonacci_example:
     build:
-      context: ./backend/backend/
-      dockerfile: terrain_server.Dockerfile
+      context: example_ros2_services/
+      dockerfile: example_ros2_services.Dockerfile
+    environment:
+      - EXAMPLE_ROS2_SERVICE=fibonacci
+  
+  get_service_server_mac_example:
+    build:
+      context: .
+      dockerfile: example_ros2_services/example_ros2_services.Dockerfile
+    environment:
+      - EXAMPLE_ROS2_SERVICE=get_service_server_mac
+  
+  int_avg_example:
+    build:
+      context: example_ros2_services/
+      dockerfile: example_ros2_services.Dockerfile
+    environment:
+      - EXAMPLE_ROS2_SERVICE=int_avg
+  
+  int_rng_example:
+    build:
+      context: example_ros2_services/
+      dockerfile: example_ros2_services.Dockerfile
+    environment:
+      - EXAMPLE_ROS2_SERVICE=int_rng
+
+  str_to_lower_upper_example:
+    build:
+      context: example_ros2_services/
+      dockerfile: example_ros2_services.Dockerfile
+    environment:
+      - EXAMPLE_ROS2_SERVICE=str_to_lower_upper
+
+  ### 3D - Meshes on Map ###
+  # Deutschland – Zero – Version 2.0
+  # https://www.govdata.de/dl-de/zero-2-0
+  three_d_server:
+    build: 
+      context: ./backend/backend/file_server
+      dockerfile: tileserver.Dockerfile
     depends_on:
       - backend
     volumes:
@@ -120,48 +130,37 @@ services:
     command: python -u ./file_server/3DServer.py
     ports:
       - "9005:9005"
-    networks:
-      - internal
 
-  # ### Digital Elevation Model ###
-  # # © Bundesamt für Kartographie und Geodäsie (BKG), Datenlizenz Deutschland – Namensnennung – Version 2.0
+  ### Digital Elevation Model ###
+  # © Bundesamt für Kartographie und Geodäsie (BKG), Datenlizenz Deutschland – Namensnennung – Version 2.0
   terrain_server:
-    image: terrain_server
-    build:
-      context: ./backend/backend/
+    build: 
+      context: ./backend/backend
       dockerfile: terrain_server.Dockerfile
     depends_on:
       - backend
     volumes:
       - ./backend/backend:/app
       - ./bigData/dem/tiles:/app/terraindata
-    command: python -u file_server/TerrainServer.py
+    command: python -u ./file_server/TerrainServer.py
     ports:
       - "9010:9010"
-    networks:
-      - internal
 
   ### OpenStreetMap-Data Server ###
   # TODO OSM-License
   tileserver:
-    image: tileserver
-    build:
-      context: ./backend/backend/file_server
-      dockerfile: tileserver.Dockerfile
+    image: maptiler/tileserver-gl:latest
     volumes:
-      - ./bigData/osmdata/:/osmdata/
+      - ./bigData/osm/:/osmdata/
       - ./backend/backend/file_server/osm/tileserver:/tileserver
+
     ports:
       - "9015:9015"
     command: ["-c", "/tileserver/config.json", "-p", "9015"]
-    networks:
-      - internal
-      # - external
 
   ### Vue ###
   frontend:
-    image: frontend
-    build:
+    build: 
       context: ./frontend
       dockerfile: frontend.Dockerfile
     depends_on:
@@ -170,7 +169,6 @@ services:
       - "5170:5170"
     volumes:
       - ./frontend:/app
-      - /app/node_modules
     command: npm run dev -- --port 5170 --host
     environment:                   
       - VITE_USE_SIM=true
@@ -180,17 +178,11 @@ services:
       - VITE_DEM_SERVER_PORT=9010
       - VITE_OSM_SERVER_PORT=9015
       # Edit: Chris' Backend URL
-      - DB_URL=postgresql://postgres:securepassword@db:5432/rosData
-    networks:
-      - internal
-      # - external
+      - DB_URL=http://localhost:XXXX/
 
 volumes:
-  postgres_data:
+  pgdata:
 
 networks:
   internal:
-    external: false
     driver: bridge
-  # external:
-  #   driver: overlay
