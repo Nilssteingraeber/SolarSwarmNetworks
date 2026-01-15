@@ -1,6 +1,7 @@
 #!/bin/bash
 LEADER_CHECK_DELAY=30 # in seconds
 LEADER_PATIENCE=60 # LEADER_PATIENCE * LEADER_CHECK_DELAY total seconds
+QUORUM_LOSS_TOLERANCE=30
 # demotion after LEADER_PATIENCE failed pings
 IDEAL_MANAGER_COUNT=3
 SW_SETUP=/home/$MESH_IDENTITY/solarswarm_setup
@@ -66,9 +67,96 @@ check_duplicate_hostnames() {
 }
 
 while [ 0 ]; do
-    # TODO: check if self is still leader and stop docker_leader.service if not
+    # check if self is still leader and stop docker_leader.service if not
+    state=$(sudo docker info --format '{{.Swarm.LocalNodeState}}')
+    if [ ! -z $state ] && [ ! $state == "inactive" ]; then
+        is_manager=$(sudo docker info | awk '/Is Manager:/ {print $3}' 2>/dev/null)
+        if [ ! -z $is_manager ] && [ $is_manager == "true" ]; then
+            manager_status=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}} {{.ManagerStatus}}" | grep "$MESH_IDENTITY" | awk '{print $2}')
+            if [ ! -z $manager_status ] && [ ! $manager_status ==  "Leader" ]; then
+                echo "[docker_leader] No longer leader. Stopping service..." >>$LOG_OUT
+                sudo systemctl stop docker_leader.service
+                exit 0
+            fi
+        fi
+    fi
+
+    designated_leader=$(head -1 $SW_SETUP/docker/leader)
+    if ! check_leader $designated_leader; then designated_leader=""; fi
+
+    # check for quorum loss
+    state=$(sudo docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null)
+    if [ ! -z $state ] && [ $state == "error" ]; then
+        echo "[docker_leader] Node state: error"
+        # wait for cluster to fix itself
+        error_time=0
+        while [ $error_time -le $QUORUM_LOSS_TOLERANCE ]; do
+            sleep 1
+            ((error_time++))
+        done
+
+        state=$(sudo docker info --format '{{.Swarm.LocalNodeState}}')
+        if [ ! -z $state ] && [ $state == "error" ] && [ $MESH_IDENTITY == $designated_leader ]; then
+            echo "[docker_leader] Node state is still 'error'. Forcing new cluster as designated leader..."
+            # eventually force new cluster, requiring all nods to rejoin
+            # as this probably ends all running docker services on those nodes, critical robot functions (such as steering) should not run on a stack
+            sudo docker swarm init --force-new-cluster --advertise-addr $MESH_IP
+            echo "$(sudo docker swarm join-token -q worker 2>/dev/null) $MESH_IP:2377" > $WORKER_TOKEN_LOCATION
+            sudo docker info | awk '/ClusterID/ {print 2}' >> $WORKER_TOKEN_LOCATION # Add ClusterID beneath token
+            echo "[docker_init] Generated worker join token: $(head -1 $WORKER_TOKEN_LOCATION)" >>$LOG_OUT
+            # sudo systemctl restart docker_leader.service
+            # exit 0
+        fi
+    fi
+
+    # imagine a cluster split into two parts, leaving the designated leader in a minority of managers
+    # designated leader might start another cluster
+    # if the other part with the majority has no loss of quorum, nodes won't attempt to join the new cluster
+    # -> the temporary leader must (1) demote all managers, (2) remove all nodes other than himself, (3) leave the swarm forcefully
+    # -> docker_init should exit when nodes become inactive as a result of being removed (further research or tests required)
+    if [ ! -z $designated_leader ]; then designated_leader_ip=$(grep $leader $SW_SETUP/ssh_identities/names_with_ip | awk '{print $2}'); fi
+    if [ ! -z $designated_leader_ip ] && [ ! $MESH_IDENTITY == $designated_leader ]; then
+        if sudo docker node ls --filter "role=manager" --format "{{.Hostname}} {{.ManagerStatus}}" | grep "$designated_leader Unreachable"; then
+            if ping -W 1 -c 1 $designated_leader_ip &>/dev/null; then
+                echo "[docker_leader] Possibility of more than one clusters existing simultaneously detected."
+                # designated leader is reachable but possibly not in same cluster
+                # check if they are not in the same swarm and have different ClusterIDs
+                worker_loc=/home/$designated_leader/solarswarm_setup/docker/worker_token
+                if scp $SSH_TIMEOUT $HOST_CHECKING $designated_leader:$worker_loc $SW_SETUP/docker/cluster_check; then
+                    own_cluster_id=$(head -2 $SW_SETUP/docker/worker_token | tail -1)
+                    other_cluster_id=$(head -2 $SW_SETUP/docker/cluster_check | tail -1)
+                    if [ ! -z $own_cluster_id ] && [ ! -z $other_cluster_id] && [ ! $own_cluster_id == $other_cluster_id ]; then
+                        # more than one cluster
+                        echo "[docker_leader] Self has ClusterID $own_cluster_id while designated leader has ClusterID $other_cluster_id."
+                        if [ $purge_second_cluster == true ]; then
+                            # demote managers (except self)
+                            managers=$(sudo docker node ls --filter "role==manager" --format "{{.Hostname}}")
+                            echo "[docker_leader] Current managers: $managers"
+                            for manager in $managers; do
+                                if [ -z $manager ] || [ $manager == $MESH_IDENTITY ]; then continue; fi
+                                sudo docker node demote $manager
+                            done
+
+                            # remove nodes
+                            hosts=$(sudo docker node ls --format "{{.Hostname}}")
+                            echo "[docker_leader] Current hosts: $hosts"
+                            for host in $hosts; do
+                                if [ -z $host ] || [ $host == $MESH_IDENTITY ]; then continue; fi
+                                sudo docker node rm $host
+                            done
+
+                            # leave
+                            sudo docker swarm leave -f
+                        fi
+                    fi
+                fi    
+                if [ -f $SW_SETUP/docker/cluster_check ]; then rm $SW_SETUP/docker/cluster_check; fi
+            fi
+        fi
+    fi
+
     
-    echo "[docker_leader] Starting loop..." >>$LOG_OUT
+    # echo "[docker_leader] Starting loop..." >>$LOG_OUT
     # add labels and activate nodes
     # when a worker joins, it is paused and leaves a labels file (even if empty)
     echo "[docker_leader] Looking for .labels files..."

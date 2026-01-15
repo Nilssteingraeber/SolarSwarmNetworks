@@ -14,35 +14,35 @@ while [ 0 ]; do
             changed=false
             # move names, names_with_ip, config, and public keys to ssh_identities/
             if [ -f $SW_SETUP/rx/ssh/names ]; then
-                mv $SW_SETUP/rx/ssh/names $SW_SETUP/ssh_identities/
-                echo "[rx_copy] Moved 'names' to '$SW_SETUP/ssh_identities/'" >>$LOG_OUT
+                mv $SW_SETUP/rx/ssh/names $SW_SETUP/ssh_identities/names
+                echo "[rx_copy] Moved 'names' to '$SW_SETUP/ssh_identities/names'" >>$LOG_OUT
                 changed=true
             fi
 
             if [ -f $SW_SETUP/rx/ssh/names_with_ip ]; then
-                mv $SW_SETUP/rx/ssh/names_with_ip $SW_SETUP/ssh_identities/
-                echo "[rx_copy] Moved 'names_with_ip' to '$SW_SETUP/ssh_identities/'" >>$LOG_OUT
+                mv $SW_SETUP/rx/ssh/names_with_ip $SW_SETUP/ssh_identities/names_with_ip
+                echo "[rx_copy] Moved 'names_with_ip' to '$SW_SETUP/ssh_identities/names_with_ip'" >>$LOG_OUT
                 changed=true
             fi
 
             if [ -f $SW_SETUP/rx/ssh/config ]; then
-                mv $SW_SETUP/rx/ssh/config $SW_SETUP/ssh_identities/
-                echo "[rx_copy] Moved 'config' to '$SW_SETUP/ssh_identities/'" >>$LOG_OUT
+                mv $SW_SETUP/rx/ssh/config $SW_SETUP/ssh_identities/config
+                echo "[rx_copy] Moved 'config' to '$SW_SETUP/ssh_identities/config'" >>$LOG_OUT
                 changed=true
             fi
             
             for name in $($SW_SETUP/ssh_identities/names); do
                 if [ ! -z $name ] && [ -d $SW_SETUP/rx/ssh/ ] && [ ! -z $SW_SETUP/rx/ssh/$name.pub] && [ ! $name == $MESH_IDENTITY ]; then
-                    mv $SW_SETUP/rx/ssh/$name.pub $SW_SETUP/ssh_identities/keys/
-                    echo "[rx_copy] Moved '$name.pub' to '$SW_SETUP/ssh_identities/keys/'" >>$LOG_OUT
+                    mv $SW_SETUP/rx/ssh/$name.pub $SW_SETUP/ssh_identities/keys/$name.pub
+                    echo "[rx_copy] Moved '$name.pub' to '$SW_SETUP/ssh_identities/keys/$name.pub'" >>$LOG_OUT
                     changed=true
                 fi
             done
 
             if [ ! -z $MESH_IP ] && [ $changed == true ] && [ $AUTO_UPDATE_SSH == true ]; then
-                cp $SW_SETUP/ssh_identities/config ~/.ssh/
+                cp $SW_SETUP/ssh_identities/config ~/.ssh/config
                 sudo sed -i "s/own_name/$MESH_IP/" ~/.ssh/config # replace own_name with MESH_IP
-                echo "[rx_copy] Copied 'config' to '~/.ssh/'" >>$LOG_OUT
+                echo "[rx_copy] Copied 'config' to '~/.ssh/config'" >>$LOG_OUT
             fi
         fi
     fi
