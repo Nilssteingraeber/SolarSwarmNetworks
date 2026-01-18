@@ -1,12 +1,25 @@
 #!/bin/bash
 source /etc/environment
 COPY_TO_SSH=true
+COPY_TO_DOCKER=true
 AUTO_UPDATE_SSH=true
 # SWARM_MODE=true
 SW_SETUP=/home/$MESH_IDENTITY/solarswarm_setup
 LOG_OUT=/dev/stdout # see docker_init.bash
 
+LEADER_LOC=$SW_SETUP/rx/docker/leader
+LEADER_TARGET=$SW_SETUP/docker/leader
+
+check_leader() {
+    leader=$1 # first (and only) argument is leader, i.e.: 'check_leader alfa' -> 'leader="alfa"' 
+    if [ ! -z $leader ] && grep -E "^$leader$" $SW_SETUP/ssh_identities/names &>/dev/null; then
+        return 0 # valid leader
+    fi 
+    return 1
+}
+
 while [ 0 ]; do
+    # rx/ssh/
     # update ~/.ssh/ as hosts can not directy copy into this directory
     if [ $COPY_TO_SSH == true ]; then
         if [ -d ~/.ssh/ ] && [ -d $SW_SETUP/rx/ssh/ ]; then
@@ -41,21 +54,16 @@ while [ 0 ]; do
 
             if [ ! -z $MESH_IP ] && [ $changed == true ] && [ $AUTO_UPDATE_SSH == true ]; then
                 cp $SW_SETUP/ssh_identities/config ~/.ssh/config
-                sudo sed -i "s/own_name/$MESH_IP/" ~/.ssh/config # replace own_name with MESH_IP
+                sudo sed -i "s/own_name/$MESH_IDENTITY/" ~/.ssh/config # replace own_name with MESH_IDENTITY
                 echo "[rx_copy] Copied 'config' to '~/.ssh/config'" >>$LOG_OUT
             fi
         fi
     fi
 
-    # copy 
-    # if [ $SWARM_MODE == true ]; then
-    #     if [ -f $SW_SETUP/rx/docker/worker_token ]; then
-    #         mv $SW_SETUP/rx/docker/worker_token $SW_SETUP/docker
-    #     fi
-
-    #     if [ -f $SW_SETUP/rx/docker/manager_token ]; then
-    #         mv $SW_SETUP/rx/docker/manager_token $SW_SETUP/docker
-    #     fi
-    # fi
-
+    # rx/docker/
+    if [ $COPY_TO_DOCKER == true ]; then
+        if [ -f $LEADER_LOC ] && check_leader $(head -1 $LEADER_LOC); then
+            mv $LEADER_LOC $LEADER_TARGET
+        fi
+    fi
 done

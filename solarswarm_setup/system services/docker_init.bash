@@ -28,7 +28,7 @@ if [ -z $MESH_IP ]; then # check if ip is set
     exit 1
 fi
 
-check_leader() { # obsolete - designated leader is not required to join a swarm
+check_leader() {
     leader=$1 # first (and only) argument is leader, i.e.: 'check_leader alfa' -> 'leader="alfa"' 
     if [ ! -z $leader ] && grep -E "^$leader$" $SW_SETUP/ssh_identities/names &>/dev/null; then
         return 0 # valid leader
@@ -184,27 +184,70 @@ fi # if state is 'inactive'
 echo "[docker_init] Monitoring local node state..." >>$LOG_OUT
 while [ 0 ]; do
     state=$(sudo docker info --format '{{.Swarm.LocalNodeState}}')
+    error=""
     # TODO?: log state
     if [ -z $state ]; then
         echo "[docker_init] Node state: unknown" #>/dev/null
     elif [ $state == "inactive" ]; then
         echo "[docker_init] Node state: inactive" #>/dev/null
+        sudo systemctl stop docker_leader.service
         exit 1
     elif [ $state == "error" ]; then
-        echo "[docker_init] Node state: error" #>/dev/null
-        # while state is "error", repeated get newest join token and ClusterID of designated leader
+        echo "[docker_init] Node state: error" >>$LOG_OUT
+    elif [ $state == "locked" ]; then
+        echo "[docker_init] Node state: locked" #>/dev/null
+    elif [ $state == "active" ]; then
+        echo "[docker_init] Node state: active" #>/dev/null
+        error=$(sudo docker info --format '{{.Swarm.Error}}')
+        if [ -z $error ]; then
+            # check if self became manager and possibly leader
+            is_manager=$(sudo docker info | awk '/Is Manager:/ {print $3}' 2>/dev/null)
+            if [ $is_manager == "true" ]; then
+                # renew join token
+                if ! grep $MESH_IP $WORKER_TOKEN_LOCATION &>/dev/null; then
+                    generate_worker_token
+                else # provided token not usable as IP is unreachable
+                    token_ip=$(head -1 $WORKER_TOKEN_LOCATION | sed "s/:/ /" | awk '{print $2}')
+                    if ! ping -W 1 -c 1 $token_ip &>/dev/null; then
+                        generate_worker_token
+                    fi
+                fi
+
+                # check if docker_leader must be started
+                manager_status=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}} {{.ManagerStatus}}" | grep "$MESH_IDENTITY" | awk '{print $2}')
+                if [ $manager_status ==  "Leader" ]; then
+                    # is leader
+                    if [ $(sudo systemctl is-active docker_leader.service) == "inactive" ]; then
+                        sudo systemctl start docker_leader.service
+                    fi
+                fi
+            fi # if manager
+            $(sudo docker node ls --filter "role=manager" --format "{{.Hostname}} {{.ManagerStatus}}")
+        fi # if no error
+    else
+        echo "[docker_init] Node state: $state" #>/dev/null
+    fi
+
+    # check for swarm errors (no reachable managers or loss of quorum)
+    if [ $state == "active" ] && [ ! -z $error ]; then
+        # case: removed by manager - should only happen designated leader has a new cluster
+        # case: network error - can be internal (as with bravo) or external
+        # case: loss of quorum - presumably caused by network errors
+
+        # while error is present, repeatedly get newest join token and ClusterID of designated leader
         # if ClusterID has changed, designated leader has forced a new cluster to solve quorum loss
-        # then join new cluster
-        if [ ! $MESH_IDENTITY == $LEADER ]; then # only if not designated leader
+        # if so, join new cluster
+        if [ ! $MESH_IDENTITY == $leader ]; then # only if not designated leader
             # get newest token from designated leader and compare ClusterID
             joining=true
             while [ $joining == true ];
                 # check state again
-                state=$(sudo docker info --format '{{.Swarm.LocalNodeState}}')
-                if [ ! -z $state] && [ ! $state == "error" ]; then
-                    echo "[docker_init] Node state is no longer 'error'" >>$LOG_OUT
+                error=$(sudo docker info --format '{{.Swarm.Error}}')
+                if [ ! -z $error]; then
+                    echo "[docker_init] Node no longer has swarm error" >>$LOG_OUT
                     break
                 fi
+                echo "[docker_init] Swarm error: $error" >>$LOG_OUT
 
                 # content of leader file might change (depends on the rx_copy service)
                 leader=$(head -1 $SW_SETUP/docker/leader)
@@ -242,35 +285,11 @@ while [ 0 ]; do
                 done # copying join token with ClusterID
                 sleep 5
             done # waiting and possibly rejoining
-        fi # if is designated leader
-    elif [ $state == "locked" ]; then
-        echo "[docker_init] Node state: locked" #>/dev/null
-    else
-        echo "[docker_init] Node state: active" #>/dev/null
-        # check if self became manager and possibly leader
-        is_manager=$(sudo docker info | awk '/Is Manager:/ {print $3}' 2>/dev/null)
-        if [ $is_manager == "true" ]; then
-            # renew join token
-            if ! grep $MESH_IP $WORKER_TOKEN_LOCATION &>/dev/null; then
-                generate_worker_token
-            else # provided token not usable as IP is unreachable
-                token_ip=$(head -1 $WORKER_TOKEN_LOCATION | sed "s/:/ /" | awk '{print $2}')
-                if ! ping -W 1 -c 1 $token_ip &>/dev/null; then
-                    generate_worker_token
-                fi
-            fi
-
-            # check if docker_leader must be started
-            manager_status=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}} {{.ManagerStatus}}" | grep "$MESH_IDENTITY" | awk '{print $2}')
-            if [ $manager_status ==  "Leader" ]; then
-                # is leader
-                if [ $(sudo systemctl is-active docker_leader.service) == "inactive" ]; then
-                    sudo systemctl start docker_leader.service
-                fi
-            fi
-        fi
-        $(sudo docker node ls --filter "role=manager" --format "{{.Hostname}} {{.ManagerStatus}}")
+        fi # if is not designated leader
     fi
+    
+    # addresses_with_ports=$(sudo docker info | grep -E "Manager Addresses" -A 5 | grep -E "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" | sed 's/:/ /g')
+    # manager_addresses=$(echo $addresses_with_ports | sed 's/ /\n/g' | grep -E "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
 
     sleep $HEALTHCHECK_DELAY
 done

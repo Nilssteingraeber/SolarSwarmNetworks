@@ -1,5 +1,7 @@
 #!/bin/bash
-set -e # exit program if one command fails (as subsequent ones are unlikely to succeed then)
+# set -e # exit program if one command fails (as subsequent ones are unlikely to succeed then)
+# 'set -e' causes issues as adding and removing ip addresses might result in trivial failures
+# batman_adv_healthcheck already exists to restart the setup if it fails
 
 source /etc/environment
 if [ $(echo $WLANDEV | wc --chars) -eq 1 ]; then
