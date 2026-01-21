@@ -1,7 +1,7 @@
 [Unit]
 Description=Add labels to dockerd and become leader or request join tokens to join docker swarm as worker
-Wants=network-online.target
-After=network-online.target
+Wants=network-online.target batman_adv_setup.service
+After=network-online.target batman_adv_setup.service
 
 [Service]
 Type=simple

@@ -1,10 +1,11 @@
 [Unit]
 Description=Copy files from solarswarm_setup/rx/
+Before=batman_adv_setup.service
 
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/rx_copy.bash
-Restart=no
+Restart=always
 User=own_name
 
 [Install]

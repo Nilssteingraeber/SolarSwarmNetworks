@@ -1,7 +1,8 @@
 [Unit]
 Description=Collect iw station dump output
 Wants=network-online.target
-After=network-online.target
+Requires=batman_adv_setup.service
+After=network-online.target batman_adv_setup.service
 
 [Service]
 Type=simple

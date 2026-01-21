@@ -1,5 +1,6 @@
 [Unit]
 Description=Restart batman_adv_setup.service if no neighbors are found for an extended time
+After=batman_adv_setup.service
 
 [Service]
 Type=simple
