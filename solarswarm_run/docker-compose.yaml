@@ -1,17 +1,32 @@
-# docker stack delpoy does not build images
-# https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-registry/
-# https://www.docker.com/blog/how-to-use-your-own-registry-2/
-# https://docs.docker.com/reference/cli/docker/image/push/
-# docker compose build
-# docker compose push: https://docs.docker.com/reference/cli/docker/compose/push/
-# run with `sudo docker stack delpoy -c docker-compose.yaml Solarswarm`
+# the services listed below must be built ON EACH MACHINE that is supposed to participate in the swarm and replicate them
+# some services can only be built if the service base_robot has been built
+# the following services SHOULD ONLY BE BUILT IF NEEDED on a given machine:
+# - db
+# - adminer
+# - backend
+# - three_d_server
+# - terrain_server
+# - tileserver
+# - backend
+# - frontend
+# building all services at once can take a few minutes
+# db, three_d_server, terrain_server, and tileserver depend on local data
+
+# build base_robot FIRST with `sudo docker compose build base_robot`
+# build all services with `sudo docker compose build`
+# alternatively build one or a select few, i.e. `sudo docker compose build db adminer backend`
+
+# at later stages of the SolarSwarm project, it might be worth to host a registry to manage images (and their versions) more easily 
+#   https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-registry/
+#   https://www.docker.com/blog/how-to-use-your-own-registry-2/
+#   https://docs.docker.com/reference/cli/docker/image/push/
+#   https://docs.docker.com/reference/cli/docker/compose/push/
+
+# test locally with `sudo docker compose run`
+# to run in a swarm, see 'docker-stack.yaml'
+# see locally running services/containers with `sudo docker ps`
 
 services:
-  # Note: Docker compose does not consider build order. Use 'sudo docker compose build base_robot' first.
-
-  # base_robot should run on all robots
-  # to excluse nodes from this, change those nodes' availability to drain
-  # or introduce a new label and constraints to differentiate between robot and non-robot
   base_robot:
     image: base_robot
     build:
@@ -23,7 +38,6 @@ services:
       - ./logs/:/home/ubuntu/logs/
     networks:
       - internal # temporary for testing
-    #   - external
     environment:
       - MESH_IP=${MESH_IP}
       - HOST_MAC=${HOST_MAC}
@@ -38,7 +52,6 @@ services:
       - ./logs/:/home/ubuntu/logs/
     networks:
       - internal
-      # - external
     environment:
       # data sink
       LOG_OUT: /home/ubuntu/logs/data_sink.log
@@ -80,6 +93,7 @@ services:
       - db
 
   backend:
+    image: backend
     build: 
       context: .
       dockerfile: backend/backend.Dockerfile
@@ -88,17 +102,17 @@ services:
       ROS_DISTRO: jazzy
     ports:
       - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
+    # depends_on:
+    #   db:
+    #     condition: service_healthy
     volumes:
       - ./logs/:/tmp/logs/
     # Für Development mit Auto-Reload
     networks:
       - internal
-      # - external
 
   fibonacci_example:
+      image: fibonacci_example
       build:
         context: .
         dockerfile: example_ros2_services/example_ros2_services.Dockerfile
@@ -106,6 +120,7 @@ services:
         - EXAMPLE_ROS2_SERVICE=fibonacci
     
   get_service_server_mac_example:
+    image: get_service_server_mac_example
     build:
       context: .
       dockerfile: example_ros2_services/example_ros2_services.Dockerfile
@@ -113,6 +128,7 @@ services:
       - EXAMPLE_ROS2_SERVICE=get_service_server_mac
 
   int_avg_example:
+    image: int_avg_example
     build:
       context: .
       dockerfile: example_ros2_services/example_ros2_services.Dockerfile
@@ -120,6 +136,7 @@ services:
       - EXAMPLE_ROS2_SERVICE=int_avg
 
   int_rng_example:
+    image: int_rng_example
     build:
       context: .
       dockerfile: example_ros2_services/example_ros2_services.Dockerfile
@@ -127,6 +144,7 @@ services:
       - EXAMPLE_ROS2_SERVICE=int_rng
 
   str_to_lower_upper_example:
+    image: str_to_lower_upper_example
     build:
       context: .
       dockerfile: example_ros2_services/example_ros2_services.Dockerfile
@@ -137,6 +155,7 @@ services:
   # Deutschland – Zero – Version 2.0
   # https://www.govdata.de/dl-de/zero-2-0
   three_d_server:
+    image: three_d_server
     build:
       context: ./backend/backend/
       dockerfile: terrain_server.Dockerfile
@@ -150,7 +169,6 @@ services:
       - "9005:9005"
     networks:
       - internal
-    #  - external
 
   ### Digital Elevation Model ###
   # © Bundesamt für Kartographie und Geodäsie (BKG), Datenlizenz Deutschland – Namensnennung – Version 2.0
@@ -169,7 +187,6 @@ services:
       - "9010:9010"
     networks:
       - internal
-    #  - external
 
   ### OpenStreetMap-Data Server ###
   # TODO OSM-License
@@ -186,7 +203,6 @@ services:
     command: ["-c", "/tileserver/config.json", "-p", "9015"]
     networks:
       - internal
-      # - external
 
   ### Vue ###
   frontend:
@@ -213,7 +229,6 @@ services:
       - DB_URL=postgresql://postgres:securepassword@db:5432/rosData
     networks:
       - internal
-      # - external
 
 volumes:
   postgres_data:
@@ -222,5 +237,6 @@ networks:
   internal:
     external: false
     driver: bridge
-  # external:
-  #   driver: overlay
+  # external is defined and assigned in 'docker-stack.yaml'
+  # internal is also redefined in 'docker-stack.yaml' as stacks do not allow bridge networks
+  # both files should be merged when deploying the stack

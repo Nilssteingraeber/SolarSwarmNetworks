@@ -1,261 +1,167 @@
-# docker stack delpoy does not build images
-# https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-registry/
-# https://www.docker.com/blog/how-to-use-your-own-registry-2/
-# https://docs.docker.com/reference/cli/docker/image/push/
-# docker compose build
-# docker compose push: https://docs.docker.com/reference/cli/docker/compose/push/
-# run with `sudo docker stack delpoy -c docker-compose.yaml Solarswarm`
+# docker stack delpoy does not build images - 'docker-compose.yaml' needs to be built first
+
+# this file is meant to be merged with 'docker-compose.yaml' during deploy
+# merging happens when multiple files are added with the `-c` option on deploy
+# related: https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/
+
+# deploy with `sudo docker stack delpoy -c docker-compose.yaml -c docker-stack.yaml SolarSwarm`
+# monitor service replication with `sudo docker service ls`
+# see locally running services with `sudo docker ps`
+# see nodes in swarm with `sudo docker `
+# remove with `sudo docker stack rm SolarSwarm`
 
 services:
   base_robot:
-    # should run on all robots
+    # base_robot should run on all robots
     # to excluse nodes from this, change those nodes' availability to drain
-    # or introduce a new label and constraints to differentiate between robot and non-robot
-    build:
-      context: .
-      dockerfile: base_robot/base_robot.Dockerfile
-      network: host
-    volumes:
-      - /tmp/iw_dump/:/tmp/iw_dump/
-      - ./logs/:/tmp/logs/
+    # or introduce a new required label for this service and add a matching constraint
+    networks:
+      - external
     deploy:
       mode: global
-      max_replicas_per_node: 1
   
   data_sink:
-    build:
-      context: .
-      dockerfile: data_sink/sw_robot.Dockerfile
-      # network: host
-    volumes:
-      - ./logs/:/tmp/logs/
     networks:
       - internal
-    environment:
-      # data sink
-      # FORWARD_TO_DB: forward
-      TRIES_TO_GET_STATES: 2
-      # DB
-      DB_NAME: rosData
-      DB_USER: postgres
-      DB_PASSWORD: securepassword
-      DB_HOST: db
-      DB_PORT: "5432"
+      - external
     deploy:
       mode: replicated
       replicas: 1
       placement:
         constraints:
-          - node.labels.has_data_sink # should only be given once (same host which runs web and db)
+          - node.labels.has_data_sink==true # should only be given once (same host which runs frontend, backend and db)
   
   db:
-    image: postgres:13
-    environment:
-      POSTGRES_DB: rosData
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: securepassword
-    ports:
-      - "5173:5173"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    networks:
+      - internal
     deploy:
       mode: replicated
       replicas: 1
       placement:
         constraints:
-          - node.labels.has_data_sink # should only be given once (same host which runs data_sink and web)
+          - node.labels.has_data_sink==true # should only be given once (same host which runs frontend, backend and db)
 
+  adminer:
+    networks:
+      - internal
+      - external
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.has_data_sink==true # should only be given once (same host which runs frontend, backend and db)
 
   backend:
-    build: 
-      context: ./backend
-      dockerfile: Dockerfile
-    environment:
-      DATABASE_URL: postgresql://postgres:securepassword@db:5432/rosData
-      ROS_DISTRO: jazzy
-    ports:
-      - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - ./backend/backend:/app
-      - ./logs/:/tmp/logs/
-    # Für Development mit Auto-Reload
-    command: >
-      bash -lc "
-        source /opt/ros/jazzy/setup.bash && 
-        cd /app && 
-        uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-      "
-    # network_mode: host
+    networks:
+      - internal
+      - external
     deploy:
       mode: replicated
       replicas: 1
       placement:
         constraints:
-          - node.labels.has_data_sink # should only be given once (same host which runs data_sink and db)
-  
+          - node.labels.has_data_sink == true # should only be given once (same host which runs frontend, backend and db)
+
   fibonacci_example:
-    build:
-      context: ./example_ros2_services
-      dockerfile: example_ros2_services.Dockerfile
-    environment:
-      - EXAMPLE_ROS2_SERVICE=fibonacci
+    networks:
+      - external
     deploy:
       mode: replicated
       replicas: 2
-      max_replicas_per_node: 1
       placement:
+        max_replicas_per_node: 1
         constraints:
-          - node.labels.ram_ge8
-  
+          - node.labels.ram_ge8 == true
+    
   get_service_server_mac_example:
-    build:
-      context: ./example_ros2_services
-      dockerfile: example_ros2_services.Dockerfile
-    environment:
-      - EXAMPLE_ROS2_SERVICE=get_service_server_mac
     deploy:
       mode: global
-  
+
   int_avg_example:
-    build:
-      context: ./example_ros2_services
-      dockerfile: example_ros2_services.Dockerfile
-    environment:
-      - EXAMPLE_ROS2_SERVICE=int_avg
+    networks:
+      - external
     deploy:
       mode: replicated
       replicas: 2
-      max_replicas_per_node: 1
       placement:
+        max_replicas_per_node: 1
         constraints:
-          - node.labels.ram_ge8
-  
+          - node.labels.ram_ge8 == true
+
   int_rng_example:
-    build:
-      context: ./example_ros2_services
-      dockerfile: example_ros2_services.Dockerfile
-    environment:
-      - EXAMPLE_ROS2_SERVICE=int_rng
+    networks:
+      - external
     deploy:
       mode: replicated
       replicas: 2
-      max_replicas_per_node: 1
       placement:
+        max_replicas_per_node: 1
         constraints:
-          - node.labels.ram_ge8
+          - node.labels.ram_ge8 == true
 
   str_to_lower_upper_example:
-    build:
-      context: ./example_ros2_services
-      dockerfile: example_ros2_services.Dockerfile
-    environment:
-      - EXAMPLE_ROS2_SERVICE=str_to_lower_upper
+    networks:
+      - external
     deploy:
       mode: replicated
       replicas: 2
-      max_replicas_per_node: 1
       placement:
+        max_replicas_per_node: 1
         constraints:
-          - node.labels.ram_ge8
-
-
-
-
+          - node.labels.ram_ge8 == true
 
   ### 3D - Meshes on Map ###
   # Deutschland – Zero – Version 2.0
   # https://www.govdata.de/dl-de/zero-2-0
   three_d_server:
-    build: ./backend/backend
-    depends_on:
-      - backend
-    volumes:
-      - ./backend/backend:/app
-      - ./bigData/data:/app/data
-    command: python -u ./file_server/3DServer.py
-    ports:
-      - "9005:9005"
+    networks:
+      - external
     deploy:
       mode: replicated
       replicas: 1
       placement:
         constraints:
-          - node.labels.has_3d_map_data
+          - node.labels.has_3d_map_data == true
 
   ### Digital Elevation Model ###
   # © Bundesamt für Kartographie und Geodäsie (BKG), Datenlizenz Deutschland – Namensnennung – Version 2.0
   terrain_server:
-    build: ./backend/backend
-    depends_on:
-      - backend
-    volumes:
-      - ./backend/backend:/app
-      - ./bigData/dem/tiles:/app/terraindata
-    command: python -u ./file_server/TerrainServer.py
-    ports:
-      - "9010:9010"
+    networks:
+      - external
     deploy:
       mode: replicated
       replicas: 1
       placement:
         constraints:
-          - node.labels.has_2d_map_data
+          - node.labels.has_2d_map_data == true
 
   ### OpenStreetMap-Data Server ###
   # TODO OSM-License
   tileserver:
-    image: maptiler/tileserver-gl:latest
-    volumes:
-      - ./bigData/osm/:/osmdata/
-      - ./backend/backend/file_server/osm/tileserver:/tileserver
-
-    ports:
-      - "9015:9015"
-    command: ["-c", "/tileserver/config.json", "-p", "9015"]
+    networks:
+      - external
     deploy:
       mode: replicated
       replicas: 1
       placement:
         constraints:
-          - node.labels.has_2d_map_data
+          - node.labels.has_2d_map_data == true
 
   ### Vue ###
   frontend:
-    build: ./frontend
-    depends_on:
-      - backend
-    ports:
-      - "5170:5170"
-    volumes:
-      - ./frontend:/app
-    command: npm run dev -- --port 5170 --host
-    environment:                   
-      - VITE_USE_SIM=true
-      # Ports
-      - VITE_PORT=9000
-      - VITE_MESH_3D_SERVER_PORT=9005
-      - VITE_DEM_SERVER_PORT=9010
-      - VITE_OSM_SERVER_PORT=9015
-      # Edit: Chris' Backend URL
-      - DB_URL=http://localhost:XXXX/
+    networks:
+      - external
     deploy:
       mode: replicated
       replicas: 1
       placement:
         constraints:
-          - node.labels.has_web
-
-volumes:
-  pgdata:
+          - node.labels.has_web == true
 
 networks:
   internal:
-    driver: bridge
+    driver: overlay
+    attachable: true
+  external:
+    driver: overlay
