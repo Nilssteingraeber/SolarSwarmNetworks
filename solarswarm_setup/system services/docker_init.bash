@@ -48,6 +48,7 @@ fi
 
 state=$(sudo docker info --format '{{.Swarm.LocalNodeState}}')
 if [ -z $state ]; then
+    echo ""
 elif [ $state == "inactive" ]; then
     while [ 0 ]; do
         # determine designated leader
@@ -222,7 +223,6 @@ while [ 0 ]; do
                     fi
                 fi
             fi # if manager
-            $(sudo docker node ls --filter "role=manager" --format "{{.Hostname}} {{.ManagerStatus}}")
         fi # if no error
     else
         echo "[docker_init] Node state: $state" #>/dev/null
@@ -240,7 +240,7 @@ while [ 0 ]; do
         if [ ! $MESH_IDENTITY == $leader ]; then # only if not designated leader
             # get newest token from designated leader and compare ClusterID
             joining=true
-            while [ $joining == true ];
+            while [ $joining == true ]; do
                 # check state again
                 error=$(sudo docker info --format '{{.Swarm.Error}}')
                 if [ ! -z $error]; then

@@ -219,34 +219,38 @@ while [ 0 ]; do
     # demote unreachable hosts if leader has lost patience
     error=$(sudo docker info --format '{{.Swarm.Error}}')
     if [ -z $error ]; then
-    managers=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}}:{{.ManagerStatus}}")
+        managers=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}}:{{.ManagerStatus}}")
+    fi
     for $line in $managers; do
-        read hostname status <<< $(echo $line | sed 's/:/ /')
-        # check manager status
-        if [ $status == "Leader" ]; then
-            continue
-        if [ $status == "Unreachable" ]; then
-            # add to list or update
-            if ! grep -E "^$hostname [0]+$" $MANAGER_LIST; then # not on list yet
-                echo "$hostname 0" >> $MANAGER_LIST
-            else # already on list
-                # filter for hostname, only take first occurance, then get count
-                count=$(grep -E "^$hostname [0]+$" $MANAGER_LIST | head -1 | awk '{print $2}')
-                new_count=$(($count+1))
-                if [ $new_count -ge $LEADER_PATIENCE ]; then
-                    if sudo docker node demote $hostname && sudo docker node rm $hostname; then
-                        # successfully removed from swarm
-                        remove_host_from_manager_list $hostname
+        if [ ! -z $line ]; then
+            read hostname status <<< $(echo $line | sed 's/:/ /')
+            # check manager status
+            if [ $status == "Leader" ]; then
+                continue
+            fi
+            if [ $status == "Unreachable" ]; then
+                # add to list or update
+                if ! grep -E "^$hostname [0]+$" $MANAGER_LIST; then # not on list yet
+                    echo "$hostname 0" >> $MANAGER_LIST
+                else # already on list
+                    # filter for hostname, only take first occurance, then get count
+                    count=$(grep -E "^$hostname [0]+$" $MANAGER_LIST | head -1 | awk '{print $2}')
+                    new_count=$(($count+1))
+                    if [ $new_count -ge $LEADER_PATIENCE ]; then
+                        if sudo docker node demote $hostname && sudo docker node rm $hostname; then
+                            # successfully removed from swarm
+                            remove_host_from_manager_list $hostname
+                        fi
+                    else
+                        sed -i "s/^$hostname $count$/$hostname $new_count/" $MANAGER_LIST # replace old count
                     fi
-                else
-                    sed -i "s/^$hostname $count$/$hostname $new_count/" $MANAGER_LIST # replace old count
                 fi
-            fi
-        else # Reachable ("role=manager" already filters workers)
-            if [ $RESET_PATIENCE == true ]; then
-                remove_host_from_manager_list $hostname
-            fi
-        fi # check manager status
+            else # Reachable ("role=manager" already filters workers)
+                if [ $RESET_PATIENCE == true ]; then
+                    remove_host_from_manager_list $hostname
+                fi
+            fi # check manager status
+        fi
     done
 
     # promote new hosts if below ideal count
