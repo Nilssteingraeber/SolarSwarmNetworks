@@ -135,7 +135,7 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
                     if [ $which_keys == "all" ]; then
                         scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/*.pub \
                             $host:$remote_setup/rx/ssh/ # copy public keys
-                        if [ ! -z $3] && [ $3 == "register" ]; then # add to authorized_keys of host
+                        if [ ! -z $4 ] && [ $4 == "register" ]; then # add to authorized_keys of host
                             # register own key key first to possibly not require a password for every other key
                             ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$MESH_IDENTITY.pub $host@$ip
                             for pub_key in $(ls ssh_identities/keys/); do
@@ -143,11 +143,11 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
                                 ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$pub_key $host@$ip
                                 # note: all keys in 'ssh_identities/keys/' are currently trusted
                             done
-                        fi
+                        fi # TODO: test if register finally works
                     elif [ $which_keys == "own" ]; then
                         scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/*.pub \
                             $host:$remote_setup/rx/ssh/ # copy public key
-                        if [ ! -z $3] && [ $3 == "register" ]; then # add to authorized_keys of host
+                        if [ ! -z $4 ] && [ $4 == "register" ]; then # add to authorized_keys of host
                             ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$MESH_IDENTITY.pub $host@$ip
                         fi
                     fi
@@ -183,7 +183,7 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
                 if [ $which_keys == "all" ]; then
                     scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/*.pub \
                         $host:$remote_setup/ssh_identities/rx/ssh/ # copy public keys
-                    if [ ! -z $3] && [ $3 == "register" ]; then # add to authorized_keys of host
+                    if [ ! -z $4 ] && [ $4 == "register" ]; then # add to authorized_keys of host
                         # register own key key first to possibly not require a password for every other key
                         ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$MESH_IDENTITY.pub $host@$ip
                         for pub_key in $(ls ssh_identities/keys/); do
@@ -195,7 +195,7 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
                 elif [ $which_keys == "own" ]; then
                     scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/$MESH_IDENTITY.pub \
                         $host:$remote_setup/ssh_identities/rx/ssh/ # copy public key
-                    if [ ! -z $3] && [ $3 == "register" ]; then # add to authorized_keys of host
+                    if [ ! -z $4 ] && [ $4 == "register" ]; then # add to authorized_keys of host
                         ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$MESH_IDENTITY.pub $host@$ip
                     fi
                 fi
@@ -405,7 +405,7 @@ elif [ $1 == "wlandev" ]; then
     source /etc/environment
 elif [ $1 == "send" ]; then
     if [ ! -z $2 ] && [ $2 == "keys" ]; then
-        send_to_hosts keys $3
+        send_to_hosts keys $3 $4
     elif [ ! -z $2 ] && [ $2 == "hosts" ]; then
         send_to_hosts hosts $3
     else
@@ -562,10 +562,10 @@ elif [ $1 == "setup" ]; then
     
     for service in $(ls system\ services/ | grep .service); do
         cp system\ services/$service system\ services/$service.tmp # create copy
-        sed -i "s/User=own_name/User=$MESH_IDENTITY/" system\ services/$service.tmp # replace placeholder
+        sed -i "s/own_name/$MESH_IDENTITY/g" system\ services/$service.tmp # replace placeholder
         sudo mv system\ services/$service.tmp /etc/systemd/system/$service # move unit file
     done
-    sudo cp system\ services/*.timer /etc/systemd/system/ # move timers
+    sudo cp system\ services/*.timer /etc/systemd/system/ 2>/dev/null # move timers (if any exist)
     
     sudo systemctl daemon-reload
     
@@ -604,6 +604,7 @@ elif [ $1 == "cleanup" ]; then
     
     sudo rm -f /usr/local/bin/batman_adv_setup.bash
     sudo rm -f /usr/local/bin/batman_adv_healthcheck.bash
+    sudo rm -f /usr/local/bin/iw_dump.bash
     sudo rm -f /usr/local/bin/docker_leader.bash
     sudo rm -f /usr/local/bin/docker_init.bash
     sudo rm -f /usr/local/bin/rx_copy.bash
