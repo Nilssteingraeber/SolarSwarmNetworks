@@ -8,7 +8,7 @@ After=network-online.target batman_adv_setup.service
 Type=simple
 Restart=no
 ExecStart=/usr/local/bin/iw_dump.bash
-User=own_name
+Environment=HOME=/home/own_name
 
 [Install]
 WantedBy=multi-user.target
