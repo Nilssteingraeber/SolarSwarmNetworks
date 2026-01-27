@@ -80,7 +80,8 @@ while [ 0 ]; do
         is_manager=$(sudo docker info | awk '/Is Manager:/ {print $3}' 2>/dev/null)
         if [ ! -z $is_manager ] && [ $is_manager == "true" ]; then
             manager_status=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}} {{.ManagerStatus}}" | grep "$MESH_IDENTITY" | awk '{print $2}')
-            if [ ! -z $manager_status ] && [ ! $manager_status ==  "Leader" ]; then
+            if [ $? == 0 ] && [ ! -z $manager_status ] && [ ! $manager_status ==  "Leader" ]; then
+                # if self has quorum, but self is not Leader...
                 echo "[docker_leader] No longer leader. Stopping service..." >>$LOG_OUT
                 sudo systemctl stop docker_leader.service
                 exit 0
@@ -92,6 +93,7 @@ while [ 0 ]; do
     if ! check_leader $designated_leader; then designated_leader=""; fi
 
     # check for quorum loss
+    # TODO: change method of detecting error
     error=$(sudo docker info --format '{{.Swarm.Error}}' 2>/dev/null)
     if [ ! -z $error ]; then
         echo "[docker_leader] Swarm error: $error"
@@ -102,6 +104,7 @@ while [ 0 ]; do
             ((error_time++))
         done
 
+        # TODO: change method of detecting error
         error=$(sudo docker info --format '{{.Swarm.Error}}')
         if [ ! -z $error ] && [ $MESH_IDENTITY == $designated_leader ]; then
             echo "[docker_leader] Swarm error still persists. Forcing new cluster as designated leader..." >>$LOG_OUT
@@ -126,7 +129,7 @@ while [ 0 ]; do
     if [ ! -z $designated_leader_ip ] && [ ! $MESH_IDENTITY == $designated_leader ]; then
         if sudo docker node ls --filter "role=manager" --format "{{.Hostname}} {{.ManagerStatus}}" | grep "$designated_leader Unreachable"; then
             if ping -W 1 -c 1 $designated_leader_ip &>/dev/null; then
-                echo "[docker_leader] Possibility of more than one clusters existing simultaneously detected."
+                echo "[docker_leader] Detected possibility of more than one clusters existing simultaneously."
                 # designated leader is reachable but possibly not in same cluster
                 # check if they are not in the same swarm and have different ClusterIDs
                 worker_loc=/home/$designated_leader/solarswarm_setup/docker/worker_token
@@ -190,7 +193,7 @@ while [ 0 ]; do
         for label in $(cat $LABELS_TARGET/$file); do
             echo "[docker_leader] Found label: $label"
             if ! sudo docker node update --label-add $label $hostname &>/dev/null; then
-                echo "[docker_leader] Error: Failed to add label to node"
+                echo "[docker_leader] Error: Failed to add label $label to node $hostname"
                 make_active=false # make false if even one label could not be added
             fi 
         done

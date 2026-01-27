@@ -1,6 +1,8 @@
 #!/bin/bash
 source /etc/environment
 SW_SETUP=/home/$MESH_IDENTITY/solarswarm_setup
+SW_RUN=/home/$MESH_IDENTITY/solarswarm_run
+STACK_NAME="SolarSwarm"
 LEADER_TARGET=$SW_SETUP/docker # only for local host!
 LEADER_LOCATION=$SW_SETUP/docker/leader # only for local host!
 WORKER_TOKEN_LOCATION=$SW_SETUP/docker/worker_token # only for local host!
@@ -40,6 +42,37 @@ generate_worker_token() {
     echo "$(sudo docker swarm join-token -q worker 2>/dev/null) $MESH_IP:2377" > $WORKER_TOKEN_LOCATION
     sudo docker info | awk '/ClusterID/ {print 2}' >> $WORKER_TOKEN_LOCATION # add ClusterID beneath token
     echo "[docker_init] Generated worker join token: $(head -2 $WORKER_TOKEN_LOCATION | tail -1)" >>$LOG_OUT
+}
+
+add_own_labels() {
+    echo "[docker_init] Looking for .labels file..."
+    labels_target="$SW_SETUP/docker/$MESG_IDENTITY.labels"
+    if [ ! -f $labels_target ]; then
+        echo "[docker_init] Found no .labels file for self."
+        successful=false
+    else
+        # sanitize file for better security
+        # replace ';', '&', '\' and '|' with ''
+        sed -i "s/;//g; s/&//g; s/\\\//g; s/|//g;" $LABELS_TARGET/$file
+        # add labels to node
+        successful=true
+        for label in $(cat $LABELS_TARGET/$file); do
+            echo "[docker_leader] Found label: $label"
+            if ! sudo docker node update --label-add $label $hostname &>/dev/null; then
+                echo "[docker_leader] Error: Failed to add label $label to node $hostname"
+                successful=false # make false if even one label could not be added
+            fi 
+        done
+    fi
+    if [ $successful == true ]; then return 0; else return 1; fi
+}
+
+deploy_stack() {
+    echo "[docker_init] Deploying stack..."
+    echo "[docker_init] Debug: Skipping"
+    if 0; then # TODO: change to 1 when testing is done
+        sudo docker stack deploy -c $SW_RUN/docker-compose.yaml -c -c $SW_RUN/docker-stack.yaml $STACK_NAME
+    fi
 }
 
 if [ -f $SW_SETUP/docker/worker_token ]; then
@@ -108,7 +141,10 @@ elif [ $state == "inactive" ]; then
     if [ ! -z $LEADER ] && [ $LEADER == $MESH_IDENTITY ]; then # is leader
         # init swarm and produce join token
         sudo docker swarm init --advertise-addr $MESH_IP
+        add_own_labels
         generate_worker_token
+        line_count=$(sudo docker stack ls | wc -l)
+        if [ $? == 0 ] && [ $line_count -eq 1 ]; then deploy_stack; fi
         sudo systemctl restart docker_leader.service
         # 2377 is the standard port
         echo "[docker_init] Leaving leader branch" >>$LOG_OUT
@@ -185,8 +221,8 @@ fi # if state is 'inactive'
 echo "[docker_init] Monitoring local node state..." >>$LOG_OUT
 while [ 0 ]; do
     state=$(sudo docker info --format '{{.Swarm.LocalNodeState}}')
+    # TODO: change method of detecting error
     error=""
-    # TODO?: log state
     if [ -z $state ]; then
         echo "[docker_init] Node state: unknown" #>/dev/null
     elif [ $state == "inactive" ]; then
@@ -229,6 +265,7 @@ while [ 0 ]; do
     fi
 
     # check for swarm errors (no reachable managers or loss of quorum)
+    # TODO: change method of detecting error
     if [ $state == "active" ] && [ ! -z $error ]; then
         # case: removed by manager - should only happen designated leader has a new cluster
         # case: network error - can be internal (as with bravo) or external
