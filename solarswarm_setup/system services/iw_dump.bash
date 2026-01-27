@@ -16,8 +16,8 @@ if [ -z $MESH_IDENTITY ]; then
   exit 1
 fi
 
-if [ ! -d /tmp/iw_dump/ ]; then
-  echo "[iw_dump] Error: Directory '/tmp/iw_dump/' does not exist"
+if [ ! -d $SW_RUN/tmp/iw_dump/ ]; then
+  echo "[iw_dump] Error: Directory '$SW_RUN/tmp/iw_dump/' does not exist"
   exit 1
 fi
 
@@ -31,6 +31,7 @@ while [ 0 ]; do
   # write to temporary file, then rename and overwrite dump
   if iw dev $WLANDEV station dump 1>$TMP 2>>$LOG_OUT; then
     mv $TMP $DUMP
+    echo moved
   else
     echo "[iw_dump] Error: iw_dump serivce failed to get station dump" >>$LOG_OUT
   fi

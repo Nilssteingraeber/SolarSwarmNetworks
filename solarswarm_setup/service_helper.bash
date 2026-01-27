@@ -552,6 +552,15 @@ elif [ $1 == "setup" ]; then
         exit 1
     fi
     echo "Starting setup..."
+    echo "Creating log files for services in 'logs/'..."
+    touch logs/batman_adv_setup.log
+    touch logs/batman_adv_healthcheck.log
+    touch logs/iw_dump.log
+    touch logs/docker_init.log
+    touch logs/docker_leader.log
+    touch logs/rx_copy.log
+    
+    echo "Copying service scripts..."
     sudo cp system\ services/*.bash /usr/local/bin/
     sudo chmod +x /usr/local/bin/batman_adv_setup.bash
     sudo chmod +x /usr/local/bin/batman_adv_healthcheck.bash
@@ -560,6 +569,7 @@ elif [ $1 == "setup" ]; then
     sudo chmod +x /usr/local/bin/docker_init.bash
     sudo chmod +x /usr/local/bin/rx_copy.bash
     
+    echo "Copying unit files and replacing placeholders..."
     for service in $(ls system\ services/ | grep .service); do
         cp system\ services/$service system\ services/$service.tmp # create copy
         sed -i "s/own_name/$MESH_IDENTITY/g" system\ services/$service.tmp # replace placeholder
@@ -569,6 +579,7 @@ elif [ $1 == "setup" ]; then
     
     sudo systemctl daemon-reload
     
+    echo "Enabling services..."
     sudo systemctl enable batman_adv_setup.service
     sudo systemctl enable batman_adv_healthcheck.service
     sudo systemctl enable iw_dump.service
@@ -581,6 +592,7 @@ elif [ $1 == "setup" ]; then
     echo "Done"
 elif [ $1 == "cleanup" ]; then
     echo "Starting cleanup..."
+    echo "Stopping services..."
     sudo systemctl stop batman_adv_healthcheck.service
     sudo systemctl stop batman_adv_setup.service
     sudo systemctl stop iw_dump.service
@@ -588,6 +600,7 @@ elif [ $1 == "cleanup" ]; then
     sudo systemctl stop docker_init.service
     sudo systemctl stop rx_copy.service
     
+    echo "Disabling services..."
     sudo systemctl disable batman_adv_healthcheck.service
     sudo systemctl disable batman_adv_setup.service
     sudo systemctl disable iw_dump.servie
@@ -595,6 +608,7 @@ elif [ $1 == "cleanup" ]; then
     sudo systemctl disable docker_init.service
     sudo systemctl disable rx_copy.service
     
+    echo "Removing unit files..."
     sudo rm -f /etc/systemd/system/batman_adv_setup.service
     sudo rm -f /etc/systemd/system/batman_adv_healthcheck.service
     sudo rm -f /etc/systemd/system/iw_dump.service
@@ -602,13 +616,15 @@ elif [ $1 == "cleanup" ]; then
     sudo rm -f /etc/systemd/system/docker_init.service
     sudo rm -f /etc/systemd/system/rx_copy.service
     
+    echo "Removing service scripts..."
     sudo rm -f /usr/local/bin/batman_adv_setup.bash
     sudo rm -f /usr/local/bin/batman_adv_healthcheck.bash
     sudo rm -f /usr/local/bin/iw_dump.bash
     sudo rm -f /usr/local/bin/docker_leader.bash
     sudo rm -f /usr/local/bin/docker_init.bash
     sudo rm -f /usr/local/bin/rx_copy.bash
-    if [ ! -z $2 ] && [ $2 == "with_keys"]; then
+    if [ ! -z $2 ] && [ $2 == "with_keys" ]; then
+        echo "Removing keys from '.ssh/'..."
         if [ -f ~/.ssh/authorized_keys ]; then
             sudo rm ~/.ssh/authorized_keys
         fi

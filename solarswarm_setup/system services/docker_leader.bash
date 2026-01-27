@@ -1,4 +1,5 @@
 #!/bin/bash
+echo "[docker_leader] Starting... ($(date +%T))" >>$LOG_OUT
 LEADER_CHECK_DELAY=15 # in seconds
 LEADER_PATIENCE=4
 # minimum of LEADER_PATIENCE * LEADER_CHECK_DELAY total seconds (1,5 minutes by default)
@@ -11,7 +12,7 @@ RESET_PATIENCE=true #
 LABELS_TARGET=$SW_SETUP/rx/docker
 SSH_TIMEOUT="-o ConnectTimeout=1" # see service_helper.bash
 HOST_CHECKING="-o StrictHostKeyChecking=no" # see service_helper.bash
-LOG_OUT=/dev/stdout # see docker_init.bash
+LOG_OUT=$SW_SETUP/logs/docker_leader.log # see docker_init.bash
 REMOVE_DUPLICATE_HOSTNAMES=true
 # check_duplicate_hostnames() removes nodes using the same hostname as another node that is 'Ready'
 # only does so if only one node has status 'Ready'
@@ -68,11 +69,24 @@ check_duplicate_hostnames() {
 }
 
 remove_host_from_manager_list() {
-    sed -i -E "/^$1/d" $MANAGER_LIST
+    if [ ! -z $1 ]; then
+        sed -i -E "/^$1/d" $MANAGER_LIST
+    fi
 }
+
+check_leader() {
+    leader=$1 # first (and only) argument is leader, i.e.: 'check_leader alfa' -> 'leader="alfa"' 
+    if [ ! -z $leader ] && grep -E "^$leader$" $SW_SETUP/ssh_identities/names &>/dev/null; then
+        return 0 # valid leader
+    fi 
+    return 1
+}
+
+source /etc/environment
 
 echo "" > $MANAGER_LIST.tmp # new count for tracking patience with managers
 
+echo "[docker_leader] Starting... ($(date +%T))" >>$LOG_OUT
 while [ 0 ]; do
     # check if self is still leader and stop docker_leader.service if not
     state=$(sudo docker info --format '{{.Swarm.LocalNodeState}}')
@@ -211,24 +225,25 @@ while [ 0 ]; do
     
     #####
     # TODO: remove echo, sleep, and continue below and test administering managers 
-    echo "[docker_leader] Debug: Loop cycle done (skipped managers) - sleeping for $LEADER_CHECK_DELAY seconds" >>$LOG_OUT
-    sleep $LEADER_CHECK_DELAY
-    continue
+    # echo "[docker_leader] Debug: Loop cycle done (skipped managers) - sleeping for $LEADER_CHECK_DELAY seconds" >>$LOG_OUT
+    # sleep $LEADER_CHECK_DELAY
+    # continue
     #####
 
     echo "[docker_leader] Checking on managers..."
 
     # check on managers
     # demote unreachable hosts if leader has lost patience
-    error=$(sudo docker info --format '{{.Swarm.Error}}')
-    if [ -z $error ]; then
+    # error=$(sudo docker info --format '{{.Swarm.Error}}')
+    if [ -z $error ]; then # TODO: change method of detecting errors
         managers=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}}:{{.ManagerStatus}}")
+        echo $managers
     fi
-    for $line in $managers; do
+    for line in $managers; do
         if [ ! -z $line ]; then
             read hostname status <<< $(echo $line | sed 's/:/ /')
             # check manager status
-            if [ $status == "Leader" ]; then
+            if [ $status == "Leader" ] || [ $hostname == $MESH_IDENTITY ]; then
                 continue
             fi
             if [ $status == "Unreachable" ]; then
@@ -237,12 +252,14 @@ while [ 0 ]; do
                     echo "$hostname 0" >> $MANAGER_LIST
                 else # already on list
                     # filter for hostname, only take first occurance, then get count
-                    count=$(grep -E "^$hostname [0]+$" $MANAGER_LIST | head -1 | awk '{print $2}')
+                    count=$(grep -E "^$hostname [0-9]+$" $MANAGER_LIST | head -1 | awk '{print $2}')
                     new_count=$(($count+1))
                     if [ $new_count -ge $LEADER_PATIENCE ]; then
+                        echo "[docker_leader] Lost patience with host $hostname... ($(date +%T))" >>$LOG_OUT
                         if sudo docker node demote $hostname && sudo docker node rm $hostname; then
                             # successfully removed from swarm
                             remove_host_from_manager_list $hostname
+                            echo "[docker_leader] Demoted and removed host $hostname ($(date +%T))" >>$LOG_OUT
                         fi
                     else
                         sed -i "s/^$hostname $count$/$hostname $new_count/" $MANAGER_LIST # replace old count
@@ -261,13 +278,14 @@ while [ 0 ]; do
     current_manager_count=""
     current_manager_count=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}}" | wc -w)
     if [ ! -z $current_manager_count ] && [ $current_manager_count -lt $IDEAL_MANAGER_COUNT ]; then
+        echo "[docker_leader] Found only $current_manager_count managers though $IDEAL_MANAGER_COUNT are desired ($(date +%T))"
         node_ls=$(sudo docker node ls --filter "role=worker" \
-            --filter "node.label=can_become_manager" \
-            --format "{{.Hostname}}:{{.Status}}" &>/dev/null) # get workers with label can_become_manager
-        for $line in $node_ls; do
+            --filter "node.label=can_become_manager=true" \
+            --format "{{.Hostname}}:{{.Status}}") # get workers with label can_become_manager=true
+        for line in $node_ls; do
             read hostname status <<< $(echo $line | sed 's/:/ /')
             if [ $status == "Ready" ]; then
-                if sudo docker node promote $hostname; then
+                if sudo docker node promote $hostname; then # check again
                     current_manager_count=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}}" | wc -w)
                 fi
                 if [ $current_manager_count -ge $IDEAL_MANAGER_COUNT ]; then

@@ -14,7 +14,7 @@ IGNORE_LABELS_MISSING=false
 HEALTHCHECK_DELAY=10
 SSH_TIMEOUT="-o ConnectTimeout=1" # see service_helper.bash
 HOST_CHECKING="-o StrictHostKeyChecking=no" # see service_helper.bash
-LOG_OUT=/dev/stdout # also defined in docker_leader.bash and rx_copy.bash
+LOG_OUT=$SW_SETUP/logs/docker_init.log # also defined in docker_leader.bash and rx_copy.bash
 
 # leave swarm if already in one 
 # sudo docker swarm leave -f
@@ -46,20 +46,21 @@ generate_worker_token() {
 
 add_own_labels() {
     echo "[docker_init] Looking for .labels file..."
-    labels_target="$SW_SETUP/docker/$MESG_IDENTITY.labels"
+    labels_target="$SW_SETUP/docker/$MESH_IDENTITY.labels"
     if [ ! -f $labels_target ]; then
-        echo "[docker_init] Found no .labels file for self."
+        echo "[docker_init] Found no .labels file for self"
         successful=false
     else
         # sanitize file for better security
         # replace ';', '&', '\' and '|' with ''
-        sed -i "s/;//g; s/&//g; s/\\\//g; s/|//g;" $LABELS_TARGET/$file
+        sed -i "s/;//g; s/&//g; s/\\\//g; s/|//g;" $labels_target
         # add labels to node
         successful=true
-        for label in $(cat $LABELS_TARGET/$file); do
+        for label in $(cat $labels_target); do
+            label=$(echo $label | sed 's/"//g') # value `"test"` would become `\"test\"`, as shown by docker node inspect
             echo "[docker_leader] Found label: $label"
-            if ! sudo docker node update --label-add $label $hostname &>/dev/null; then
-                echo "[docker_leader] Error: Failed to add label $label to node $hostname"
+            if ! sudo docker node update --label-add $label $MESH_IDENTITY &>/dev/null; then
+                echo "[docker_leader] Error: Failed to add label $label to self"
                 successful=false # make false if even one label could not be added
             fi 
         done
@@ -70,15 +71,37 @@ add_own_labels() {
 deploy_stack() {
     echo "[docker_init] Deploying stack..."
     echo "[docker_init] Debug: Skipping"
-    if 0; then # TODO: change to 1 when testing is done
-        sudo docker stack deploy -c $SW_RUN/docker-compose.yaml -c -c $SW_RUN/docker-stack.yaml $STACK_NAME
+    if [ 0 ]; then # TODO: change to 1 when testing is done
+        echo ""
+        # sudo docker stack deploy -c $SW_RUN/docker-compose.yaml -c -c $SW_RUN/docker-stack.yaml $STACK_NAME
     fi
+}
+
+check_if_self_was_removed() {
+    # return 0 if node was removed from a swarm but is still active or 1 if fine
+    # case: host can reach hosts which are managers but node is rejected by those managers
+    # not covered: self is removed and all managers have left
+    
+    # this solution uses simple arguments for journalctl that shown are shown in the man pages
+    # tests showed that the field "error" contains "PermissionDenied" - this might not always be the case
+    # a better solution might be to analyse multiple fields, but it should suffice for this case alone
+    
+    # filter recent entries by rcp error code "PermissionDenied"
+    # -u docker to select unit, -n10 to get last 10 entries, --since to ignore old entries, --grep to filter code
+    # wc -l counts each entry as a line
+    line_count=$(sudo journalctl -u docker -n10 --since "10s ago" --grep="PermissionDenied" | wc -l)
+    if [ ! -z $line_count ] && [ $line_count -gt 0 ]; then
+        echo "[docker_init] Got rcp error code \"PermissionDenied\" ($(date +%D +%T))" >>$LOG_OUT
+        return 0
+    fi
+    return 1
 }
 
 if [ -f $SW_SETUP/docker/worker_token ]; then
     rm $SW_SETUP/docker/worker_token 2>/dev/null
 fi
 
+echo "[docker_init] Starting... ($(date +%T))" >>$LOG_OUT
 state=$(sudo docker info --format '{{.Swarm.LocalNodeState}}')
 if [ -z $state ]; then
     echo ""
@@ -145,7 +168,9 @@ elif [ $state == "inactive" ]; then
         generate_worker_token
         line_count=$(sudo docker stack ls | wc -l)
         if [ $? == 0 ] && [ $line_count -eq 1 ]; then deploy_stack; fi
-        sudo systemctl restart docker_leader.service
+        if sudo systemctl restart docker_leader.service; then
+            echo "[docker_init] Restarted docker_leader.service"
+        fi
         # 2377 is the standard port
         echo "[docker_init] Leaving leader branch" >>$LOG_OUT
     else # is worker
@@ -221,8 +246,6 @@ fi # if state is 'inactive'
 echo "[docker_init] Monitoring local node state..." >>$LOG_OUT
 while [ 0 ]; do
     state=$(sudo docker info --format '{{.Swarm.LocalNodeState}}')
-    # TODO: change method of detecting error
-    error=""
     if [ -z $state ]; then
         echo "[docker_init] Node state: unknown" #>/dev/null
     elif [ $state == "inactive" ]; then
@@ -267,7 +290,7 @@ while [ 0 ]; do
     # check for swarm errors (no reachable managers or loss of quorum)
     # TODO: change method of detecting error
     if [ $state == "active" ] && [ ! -z $error ]; then
-        # case: removed by manager - should only happen designated leader has a new cluster
+        # case: removed by manager - should only happen on purpose when designated leader has initiated a new cluster
         # case: network error - can be internal (as with bravo) or external
         # case: loss of quorum - presumably caused by network errors
 
@@ -330,3 +353,4 @@ while [ 0 ]; do
 
     sleep $HEALTHCHECK_DELAY
 done
+
