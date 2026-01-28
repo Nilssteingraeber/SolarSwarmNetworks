@@ -82,20 +82,42 @@ check_leader() {
     return 1
 }
 
+check_for_health() { # this is a copy from docker_init.bash
+    # see check_for_healtch() in docker_init.bash for more details
+    if sudo journalctl -u docker -n10 --since "10s ago" | grep "-- No entries --"; then
+        return 0 # healthy
+    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="swarm does not have a leader" | grep "-- No entries --"; then
+        # note: this was only tested on a manager in a swarm consisting only of two managers
+        return 1 # loss of quorum
+    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="no route to host" | grep "-- No entries --"; then
+        return 2 # isolated
+    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="connection refused" | grep "-- No entries --"; then
+        return 3 # manager left cluster
+    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="authentication handshake failed" | grep "-- No entries --"; then
+        return 4 # manager joined different cluster
+    else 
+        return -1 # unknown case
+    fi
+}
+
 source /etc/environment
 
 echo "" > $MANAGER_LIST.tmp # new count for tracking patience with managers
 
 echo "[docker_leader] Starting... ($(date +%T))" >>$LOG_OUT
 while [ 0 ]; do
+    # update designated leader
+    designated_leader=$(head -1 $SW_SETUP/docker/leader)
+    if ! check_leader $designated_leader; then designated_leader=""; fi
+
     # check if self is still leader and stop docker_leader.service if not
     state=$(sudo docker info --format '{{.Swarm.LocalNodeState}}')
     if [ ! -z $state ] && [ ! $state == "inactive" ]; then
         is_manager=$(sudo docker info | awk '/Is Manager:/ {print $3}' 2>/dev/null)
         if [ ! -z $is_manager ] && [ $is_manager == "true" ]; then
             manager_status=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}} {{.ManagerStatus}}" | grep "$MESH_IDENTITY" | awk '{print $2}')
-            if [ $? == 0 ] && [ ! -z $manager_status ] && [ ! $manager_status ==  "Leader" ]; then
-                # if self has quorum, but self is not Leader...
+            if [ $? == 0 ] && [ ! -z $manager_status ] && [ ! $manager_status ==  "Leader" ] && [ ! -z $designated_leader ] && [ ! $MESH_IDENTITY == $designated_leader ]; then
+                # if self has quorum, but self is not Leader nor designated leader...
                 echo "[docker_leader] No longer leader. Stopping service..." >>$LOG_OUT
                 sudo systemctl stop docker_leader.service
                 exit 0
@@ -103,35 +125,39 @@ while [ 0 ]; do
         fi
     fi
 
-    designated_leader=$(head -1 $SW_SETUP/docker/leader)
-    if ! check_leader $designated_leader; then designated_leader=""; fi
-
     # check for quorum loss
-    # TODO: change method of detecting error
-    error=$(sudo docker info --format '{{.Swarm.Error}}' 2>/dev/null)
-    if [ ! -z $error ]; then
-        echo "[docker_leader] Swarm error: $error"
+    code=$(check_for_healtch) # code 1 for loss of quorum
+    if [ ! -z $code ] && [ $code -eq 1 ]; then
+        echo "[docker_leader] Detected loss of quorum - management tasks not possible ($(date +%D +%T))"
         # wait for cluster to fix itself
         error_time=0
         while [ $error_time -le $QUORUM_LOSS_TOLERANCE ]; do
-            sleep 1
-            ((error_time++))
+            sleep 5
+            error_time=$((error_time + 5))
+            code=$(check_for_healtch) # check again
+            if [ ! -z $code ] && [ ! $code -eq 1 ]; then break; fi
         done
 
-        # TODO: change method of detecting error
-        error=$(sudo docker info --format '{{.Swarm.Error}}')
-        if [ ! -z $error ] && [ $MESH_IDENTITY == $designated_leader ]; then
-            echo "[docker_leader] Swarm error still persists. Forcing new cluster as designated leader..." >>$LOG_OUT
+        if [ ! -z $code ] && [ $code -eq 1 ] && [ $MESH_IDENTITY == $designated_leader ]; then
+            echo "[docker_leader] Loss of quorum still persists. Forcing new cluster as designated leader... ($(date +%D +%T))" >>$LOG_OUT
             # eventually force new cluster, requiring all nodes to rejoin
             # rejoining is handled by docker_init
-            # as this probably ends all running docker services on those nodes, critical robot functions (such as steering) should not run on a stack
+            # as this probably ends all running docker services on those nodes, critical robot functions (such as steering) should not run as a service
             sudo docker swarm init --force-new-cluster --advertise-addr $MESH_IP
-            echo "$(sudo docker swarm join-token -q worker 2>/dev/null) $MESH_IP:2377" > $WORKER_TOKEN_LOCATION
-            sudo docker info | awk '/ClusterID/ {print 2}' >> $WORKER_TOKEN_LOCATION # Add ClusterID beneath token
+            echo "$(sudo docker swarm join-token -q worker 2>/dev/null) $MESH_IP:2377" >$WORKER_TOKEN_LOCATION
+            sudo docker info | awk '/ClusterID/ {print 2}' >>$WORKER_TOKEN_LOCATION # Add ClusterID beneath token
             echo "[docker_init] Generated worker join token: $(head -1 $WORKER_TOKEN_LOCATION)" >>$LOG_OUT
             # sudo systemctl restart docker_leader.service
             # exit 0
         fi
+    fi
+
+    # designated must always run docker_leader - even if not leader
+    # designated leader must init new swarm if nevessary, but is no longer responsible for managerer management
+    if [ ! -z $designated_leader ] && [ ! -z $is_manager ] && [ $MESH_IDENTITY == $designated_leader ] && [ $is_manager == true ]; then
+        echo "[docker_leader] Designated leader is no longer leader - sleeping early... ($(date +%T))" >>$LOG_OUT
+        sleep $LEADER_CHECK_DELAY
+        continue
     fi
 
     # picture a cluster split into two parts, leaving the designated leader in a minority of managers
@@ -243,7 +269,7 @@ while [ 0 ]; do
         if [ ! -z $line ]; then
             read hostname status <<< $(echo $line | sed 's/:/ /')
             # check manager status
-            if [ $status == "Leader" ] || [ $hostname == $MESH_IDENTITY ]; then
+            if [ $status == "Leader" ] || [ $hostname == $MESH_IDENTITY ] || [ $hostname == $designated_leader ]; then
                 continue
             fi
             if [ $status == "Unreachable" ]; then
@@ -274,6 +300,7 @@ while [ 0 ]; do
     done
 
     # promote new hosts if below ideal count
+    # note: it would be better to modify this in the future so that an uneven manager count is avoided
     echo "[docker_leader] Checking for promotions..." >>$LOG_OUT
     current_manager_count=""
     current_manager_count=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}}" | wc -w)
