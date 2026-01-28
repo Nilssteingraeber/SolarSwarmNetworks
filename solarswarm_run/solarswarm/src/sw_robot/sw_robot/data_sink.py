@@ -218,13 +218,15 @@ class RobotStatusSub(BaseStatusSub):
 
     # timer callbacks
     def batch_timer_callback(self):
-        logging.debug('Connection status: closed == %s', str(self.conn.closed))
-        if not FORWARD_TO_DB:
-            self.forward_batch_test() # print
+        if not self.conn or self.conn.closed:
+            logging.error('Connection status: closed')
         else:
-            self.forward_batch() # forward to DB
-        # print('Batch forwarded: %s' % (TimeUtil.get_datetime_f(),))
-        logging.info('Batch forwarded: %s' % (TimeUtil.get_datetime_f(),))
+            if not FORWARD_TO_DB:
+                self.forward_batch_test() # print
+            else:
+                self.forward_batch() # forward to DB
+            # print('Batch forwarded: %s' % (TimeUtil.get_datetime_f(),))
+            logging.info('Batch forwarded: %s' % (TimeUtil.get_datetime_f(),))
 
     
     def check_nid(self, nid) -> bool: # override; allows all

@@ -6,7 +6,7 @@ Before=batman_adv_setup.service
 Type=simple
 ExecStart=/usr/local/bin/rx_copy.bash
 Restart=always
-User=own_name
+Environment=HOME=/home/own_name
 
 [Install]
 WantedBy=multi-user.target

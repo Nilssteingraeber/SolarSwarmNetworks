@@ -1,5 +1,6 @@
 #!/bin/bash
 source /etc/environment
+SLEEP_DUR=3
 COPY_TO_SSH=true
 COPY_TO_DOCKER=true
 AUTO_UPDATE_SSH=true
@@ -66,4 +67,6 @@ while [ 0 ]; do
             mv $LEADER_LOC $LEADER_TARGET
         fi
     fi
+    
+    sleep $SLEEP_DUR
 done

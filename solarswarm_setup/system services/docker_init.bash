@@ -1,6 +1,8 @@
 #!/bin/bash
 source /etc/environment
 SW_SETUP=/home/$MESH_IDENTITY/solarswarm_setup
+SW_RUN=/home/$MESH_IDENTITY/solarswarm_run
+STACK_NAME="SolarSwarm"
 LEADER_TARGET=$SW_SETUP/docker # only for local host!
 LEADER_LOCATION=$SW_SETUP/docker/leader # only for local host!
 WORKER_TOKEN_LOCATION=$SW_SETUP/docker/worker_token # only for local host!
@@ -12,7 +14,7 @@ IGNORE_LABELS_MISSING=false
 HEALTHCHECK_DELAY=10
 SSH_TIMEOUT="-o ConnectTimeout=1" # see service_helper.bash
 HOST_CHECKING="-o StrictHostKeyChecking=no" # see service_helper.bash
-LOG_OUT=/dev/stdout # also defined in docker_leader.bash and rx_copy.bash
+LOG_OUT=$SW_SETUP/logs/docker_init.log # also defined in docker_leader.bash and rx_copy.bash
 
 # leave swarm if already in one 
 # sudo docker swarm leave -f
@@ -42,12 +44,74 @@ generate_worker_token() {
     echo "[docker_init] Generated worker join token: $(head -2 $WORKER_TOKEN_LOCATION | tail -1)" >>$LOG_OUT
 }
 
+add_own_labels() {
+    echo "[docker_init] Looking for .labels file..."
+    labels_target="$SW_SETUP/docker/$MESH_IDENTITY.labels"
+    if [ ! -f $labels_target ]; then
+        echo "[docker_init] Found no .labels file for self"
+        successful=false
+    else
+        # sanitize file for better security
+        # replace ';', '&', '\' and '|' with ''
+        sed -i "s/;//g; s/&//g; s/\\\//g; s/|//g;" $labels_target
+        # add labels to node
+        successful=true
+        for label in $(cat $labels_target); do
+            label=$(echo $label | sed 's/"//g') # value `"test"` would become `\"test\"`, as shown by docker node inspect
+            echo "[docker_leader] Found label: $label"
+            if ! sudo docker node update --label-add $label $MESH_IDENTITY &>/dev/null; then
+                echo "[docker_leader] Error: Failed to add label $label to self"
+                successful=false # make false if even one label could not be added
+            fi 
+        done
+    fi
+    if [ $successful == true ]; then return 0; else return 1; fi
+}
+
+deploy_stack() {
+    echo "[docker_init] Deploying stack..."
+    echo "[docker_init] Debug: Skipping"
+    if [ 0 ]; then # TODO: change to 1 when testing is done
+        echo ""
+        # TODO: stack deploy command below
+        # sudo docker stack deploy -c $SW_RUN/docker-compose.yaml -c $SW_RUN/docker-stack.yaml $STACK_NAME
+    fi
+}
+
+check_for_health() {
+    # this solution uses simple arguments that are shown in the man pages for journalctl
+    # this solution assumes that the listed cases always produce entries containing the expressions used to filter
+    # it is unclear how this might behave if a worker reaches some managers, but not all
+    # it is unclear how this might behave if a worker reaches managers without quorum
+    
+    # -u docker to select unit, -n10 to get last 10 entries, --since to get recent entries, --grep to filter error messages
+    if sudo journalctl -u docker -n10 --since "10s ago" | grep "-- No entries --"; then
+        return 0 # healthy
+    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="swarm does not have a leader" | grep "-- No entries --"; then
+        # note: this was only tested on a manager in a swarm consisting only of two managers
+        return 1 # loss of quorum
+    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="no route to host" | grep "-- No entries --"; then
+        return 2 # isolated
+    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="connection refused" | grep "-- No entries --"; then
+        return 3 # manager left cluster
+    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="authentication handshake failed" | grep "-- No entries --"; then
+        return 4 # manager joined different cluster
+    else 
+        return -1 # unknown case
+    fi
+}
+
 if [ -f $SW_SETUP/docker/worker_token ]; then
     rm $SW_SETUP/docker/worker_token 2>/dev/null
 fi
 
+# check if docker is active - was inactive during some tests on charlie after boot
+if [ ! $(sudo systemctl is-active docker) == "active" ]; then sudo systemctl restart docker; fi
+
+echo "[docker_init] Starting... ($(date +%T))" >>$LOG_OUT
 state=$(sudo docker info --format '{{.Swarm.LocalNodeState}}')
 if [ -z $state ]; then
+    echo ""
 elif [ $state == "inactive" ]; then
     while [ 0 ]; do
         # determine designated leader
@@ -107,8 +171,13 @@ elif [ $state == "inactive" ]; then
     if [ ! -z $LEADER ] && [ $LEADER == $MESH_IDENTITY ]; then # is leader
         # init swarm and produce join token
         sudo docker swarm init --advertise-addr $MESH_IP
+        add_own_labels
         generate_worker_token
-        sudo systemctl restart docker_leader.service
+        line_count=$(sudo docker stack ls | wc -l)
+        if [ $? == 0 ] && [ $line_count -eq 1 ]; then deploy_stack; fi
+        if sudo systemctl restart docker_leader.service; then
+            echo "[docker_init] Restarted docker_leader.service"
+        fi
         # 2377 is the standard port
         echo "[docker_init] Leaving leader branch" >>$LOG_OUT
     else # is worker
@@ -184,21 +253,21 @@ fi # if state is 'inactive'
 echo "[docker_init] Monitoring local node state..." >>$LOG_OUT
 while [ 0 ]; do
     state=$(sudo docker info --format '{{.Swarm.LocalNodeState}}')
-    error=""
-    # TODO?: log state
     if [ -z $state ]; then
         echo "[docker_init] Node state: unknown" #>/dev/null
     elif [ $state == "inactive" ]; then
         echo "[docker_init] Node state: inactive" #>/dev/null
-        sudo systemctl stop docker_leader.service
+        sudo systemctl stop docker_leader.service 2>/dev/null
         exit 1
     elif [ $state == "error" ]; then
         echo "[docker_init] Node state: error" >>$LOG_OUT
+        sudo systemctl stop docker_leader.service 2>/dev/null
+        sudo docker swarm leave -f
+        exit 1
     elif [ $state == "locked" ]; then
         echo "[docker_init] Node state: locked" #>/dev/null
     elif [ $state == "active" ]; then
         echo "[docker_init] Node state: active" #>/dev/null
-        error=$(sudo docker info --format '{{.Swarm.Error}}')
         if [ -z $error ]; then
             # check if self became manager and possibly leader
             is_manager=$(sudo docker info | awk '/Is Manager:/ {print $3}' 2>/dev/null)
@@ -215,76 +284,67 @@ while [ 0 ]; do
 
                 # check if docker_leader must be started
                 manager_status=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}} {{.ManagerStatus}}" | grep "$MESH_IDENTITY" | awk '{print $2}')
-                if [ $manager_status ==  "Leader" ]; then
+                if [ $? ] && [ ! -z $manager_status ] && [ $manager_status ==  "Leader" ]; then
                     # is leader
-                    if [ $(sudo systemctl is-active docker_leader.service) == "inactive" ]; then
-                        sudo systemctl start docker_leader.service
+                    if [ ! $(sudo systemctl is-active docker_leader.service) == "active" ]; then
+                        sudo systemctl restart docker_leader.service
                     fi
                 fi
             fi # if manager
-            $(sudo docker node ls --filter "role=manager" --format "{{.Hostname}} {{.ManagerStatus}}")
         fi # if no error
     else
         echo "[docker_init] Node state: $state" #>/dev/null
     fi
 
     # check for swarm errors (no reachable managers or loss of quorum)
-    if [ $state == "active" ] && [ ! -z $error ]; then
-        # case: removed by manager - should only happen designated leader has a new cluster
-        # case: network error - can be internal (as with bravo) or external
-        # case: loss of quorum - presumably caused by network errors
+    if [ $state == "active" ]; then
+        code=$(check_for_healtch)
+        # code 0: self is healthy
+        # code 1: self is manager without quorum
+        # code 2: self is isolated from managers (internal or external causes)
+        # code 3: manager left cluster
+        # code 4: manager joined different cluster
+        # code -1: unkown case
+
+        # update designated leader
+        designated_leader=$(head -1 $SW_SETUP/docker/leader)
+        if ! check_leader $designated_leader; then designated_leader=""; fi
 
         # while error is present, repeatedly get newest join token and ClusterID of designated leader
         # if ClusterID has changed, designated leader has forced a new cluster to solve quorum loss
         # if so, join new cluster
-        if [ ! $MESH_IDENTITY == $leader ]; then # only if not designated leader
+        if [ ! -z $code ] && [ ! -z $designated_leader ] && [ ! $code -eq 0 ] && [ ! $MESH_IDENTITY == $designated_leader ]; then
+            # only if not designated leader
             # get newest token from designated leader and compare ClusterID
-            joining=true
-            while [ $joining == true ];
-                # check state again
-                error=$(sudo docker info --format '{{.Swarm.Error}}')
-                if [ ! -z $error]; then
-                    echo "[docker_init] Node no longer has swarm error" >>$LOG_OUT
-                    break
-                fi
-                echo "[docker_init] Swarm error: $error" >>$LOG_OUT
+            echo "[docker_init] Healthcheck code: $code ($(date +%D +%T))"
+            host=$designated_leader
+            worker_loc=/home/$host/solarswarm_setup/docker/worker_token
 
-                # content of leader file might change (depends on the rx_copy service)
-                leader=$(head -1 $SW_SETUP/docker/leader)
-                if ! check_leader $leader; then
-                    sleep 5
-                    continue
-                fi
-                host=$leader
-                worker_loc=/home/$host/solarswarm_setup/docker/worker_token
-
-                # get token
-                echo "[docker_init] Asking leader $host for worker join token..." >>$LOG_OUT
-                retries=5
-                while [ retries -gt 0 ]; do
-                    if scp $SSH_TIMEOUT $HOST_CHECKING $host:$worker_loc $SW_SETUP/docker/worker_token; then
-                        # got newest token -> compare ClusterID
-                        cluster_id=$(sudo docker info | awk '/ClusterID/ {print 2}')
-                        new_cluster_id=$(head -2 $WORKER_TOKEN_LOCATION | tail -1 )
-                        if [ ! -z $cluster_id ] && [ ! -z $new_cluster_id ] && [ ! $cluster_id == $new_cluster_id ]; then
-                            # join new cluster
-                            echo "[docker_init] Found new cluster to join. Leaving cluster with ClusterID $cluster_id" >>$LOG_OUT
-                            sudo docker swarm leave -f
-                            if sudo docker swarm join \
-                                    --availability pause \
-                                    --advertise-addr $MESH_IP \
-                                    --token $(head -1 $WORKER_TOKEN_LOCATION); then
-                                joining=false
-                                echo "[docker_init] Node joined new cluster with ClusterID $new_cluster_id" >>$LOG_OUT
-                                break
-                            fi
+            # get token
+            tries=5
+            echo "[docker_init] Asking designated leader $host for worker join token... ($tries times)" >>$LOG_OUT
+            while [ retries -gt 0 ]; do
+                if scp $SSH_TIMEOUT $HOST_CHECKING $host:$worker_loc $SW_SETUP/docker/worker_token; then
+                    # got newest token -> compare ClusterID
+                    cluster_id=$(sudo docker info | awk '/ClusterID/ {print 2}')
+                    new_cluster_id=$(head -2 $WORKER_TOKEN_LOCATION | tail -1 )
+                    if [ ! -z $cluster_id ] && [ ! -z $new_cluster_id ] && [ ! $cluster_id == $new_cluster_id ]; then
+                        # join new cluster
+                        echo "[docker_init] Found new cluster to join. Leaving cluster with ClusterID $cluster_id" >>$LOG_OUT
+                        sudo docker swarm leave -f
+                        if sudo docker swarm join \
+                                --availability pause \
+                                --advertise-addr $MESH_IP \
+                                --token $(head -1 $WORKER_TOKEN_LOCATION); then
+                            echo "[docker_init] Node joined new cluster with ClusterID $new_cluster_id" >>$LOG_OUT
+                            break
                         fi
                     fi
-                    ((retries--))
-                    sleep 1
-                done # copying join token with ClusterID
-                sleep 5
-            done # waiting and possibly rejoining
+                fi
+                ((tries--))
+                sleep 1
+            done # while trying to copy join token with ClusterID
+            sleep 5
         fi # if is not designated leader
     fi
     
@@ -293,3 +353,4 @@ while [ 0 ]; do
 
     sleep $HEALTHCHECK_DELAY
 done
+

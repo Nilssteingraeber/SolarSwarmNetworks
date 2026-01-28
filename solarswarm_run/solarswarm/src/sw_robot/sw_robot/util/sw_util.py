@@ -70,7 +70,7 @@ class BaseStatusSub(ABC, Node):
                     host = getenv('DB_HOST'),
                     port = getenv('DB_PORT'))
                 print('Connection to db successful')
-            return True
+                return True
         except Exception as e:
             print('Connection to db failed:', e)
             try:
@@ -78,6 +78,7 @@ class BaseStatusSub(ABC, Node):
             except:
                 pass
             return False
+        return True
 
     def check_nid(self, nid) -> bool:
         # May be used in callback functions to check if a nid exists in nodes.

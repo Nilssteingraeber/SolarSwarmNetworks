@@ -7,7 +7,7 @@ Type=simple
 Restart=on-failure
 RestartSec=5
 ExecStart=/usr/local/bin/batman_adv_healthcheck.bash
-User=own_name
+Environment=HOME=/home/own_name
 
 [Install]
 WantedBy=multi-user.target
