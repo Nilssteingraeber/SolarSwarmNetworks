@@ -236,6 +236,7 @@ Endgültiges Skript `batman-adv_setup3.bash`:
     sudo avahi-autoipd bat0
 ```
 ![Eigene MAC mit batctl o nicht sichtbar](<batman-adv/batctl o zeigt sich selbst nicht.png>)
+
 Mit einem Knoten ist es nicht möglich, mit `batctl ping`, `batctl o` oder `batctl n` zu prüfen, ob die Inbetriebnahme funktioniert. Folgende Ausgaben müssen stimmen, damit batman-adv richtig funktioniert:
 - `sudo batctl if` muss das verwendete Interface als `active` anzeigen
 - Unter `iw dev wlp0s20f3` müssen `ssid` und `type` stimmen
@@ -247,12 +248,11 @@ Mit einem Knoten ist es nicht möglich, mit `batctl ping`, `batctl o` oder `batc
 
 ### Erneuter Labortest
 Mit zwei NUCS wurde `batman-adv_setup3.bash` erneut im Labor getestet.
+
 ![Skript erfolgreich ausgeführt](<batman-adv/skript3_erfolgreich auf NUC aus Labor.png>)
-![iw info](<batman-adv/iw info richtig_NUC aus Labor.png>)
+
+![iw info](<batman-adv/skript3_iw info richtig.png>)
+
 ![batctl o zeigt originator](<batman-adv/batctl o_zeigt originator aus Labor.png>)
+
 ![batctl ping erreicht MAC-Adresse](<batman-adv/batctl ping_erreicht originator aus Labor.png>)
-
-
-Zwischenablage
-neighbor/originator tables: https://www.open-mesh.org/projects/batman-adv/wiki/Understand-your-batman-adv-network
-https://www.kernel.org/doc/Documentation/networking/batman-adv.txt

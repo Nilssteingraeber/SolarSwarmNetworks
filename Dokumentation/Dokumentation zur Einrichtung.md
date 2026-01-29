@@ -44,12 +44,12 @@ Drei wichtige Umgebungsvariablen müssen Systemweit definiert werden und Systems
 Für SSH relevante Dateien sind in `ssh_identities/` enthalten und werden hier erklärt. Das Unterverzeichnis `keys/` enthält alle öffentlichen Schlüssel bekannter Roboter oder Hosts. Die in `ssh_identities/` enthaltene Datei `config` enthält alle SSH-Hosts und muss um weitere Hosts ergänzt werden, wenn `names` und `names_with_ip` neue Einträge erhalten. Ohne einen gültigen Eintrag in `config` können die Skripte den Host nicht erreichen, da sie Hostnamen beispielsweise für scp verwenden. MESH_IDENTITY wird für Host, User und die Schlüsselnamen und MESH_IP für HostName verwendet:
 ```
 Host example_name
-        HostName 196.168.1.100
+        HostName 192.168.1.100
         User example_name
-        IdentityFile ~/.ssh/example_name.pub
+        IdentityFile ~/.ssh/example_name
 ```
 
-> Hinweis: Die in `config` definierten Hosts gelten nur für SSH. Um diese Hosts auch für andere Programme gültig zu machen, müssen sie in `/etc/hosts` inkludiert werden. In diesem Beispiel ist eine Zeile `196.168.1.100 example_name` erforderlich.
+> Hinweis: Die in `config` definierten Hosts gelten nur für SSH. Um diese Hosts auch für andere Programme gültig zu machen, müssen sie in `/etc/hosts` inkludiert werden. In diesem Beispiel ist eine Zeile `192.168.1.100 example_name` erforderlich.
 
 Namen und IP-Adressen in `config`, `names` und `names_with_ip` müssen sich stets decken. Hosts sollten in `~/ssh_identities/` und in `~/.ssh/` ihren privaten Schlüssel (für alfa beispielsweise `alfa`) und in `~/ssh_identities/keys` und in `~/.ssh` alle gültigen öffentlichen Schlüssel aller anderen Hosts (`bravo.pub`, `charlie`, ...) haben. Der private und öffentliche Schlüssel liefen im Setup-Verzeichnis an verschiedenen Stellen, da `keys/` als Ziel von `service_helper.bash send keys` gedacht ist und Dateien darin überschrieben werden können. Auch werden Schlüssel an zwei Stellen aufbewahrt, um den Austausch später leichter anpassen zu können.
 

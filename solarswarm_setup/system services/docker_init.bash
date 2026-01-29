@@ -1,10 +1,11 @@
 #!/bin/bash
-source /etc/environment
-SW_SETUP=/home/$MESH_IDENTITY/solarswarm_setup
-SW_RUN=/home/$MESH_IDENTITY/solarswarm_run
-STACK_NAME="SolarSwarm"
+source /etc/environment # load permanent envrionment variables such as MESH_IDENTITY and MESH_IP
+SW_SETUP=/home/$MESH_IDENTITY/solarswarm_setup # absolute path to solarswarm_setup/
+SW_RUN=/home/$MESH_IDENTITY/solarswarm_run # absolute path to solarswarm_run/
+    # note: 'solarswarm_run' instead of 'solarswarm_run/' so the path can be extended, i.e.: $SW_RUN/docker-compose.yaml
+STACK_NAME="SolarSwarm" # determines what the stack (definition of docker services should be called)
 LEADER_TARGET=$SW_SETUP/docker # only for local host!
-LEADER_LOCATION=$SW_SETUP/docker/leader # only for local host!
+LEADER_LOCATION=$SW_SETUP/docker/leader # path to leader file - only for local host!
 WORKER_TOKEN_LOCATION=$SW_SETUP/docker/worker_token # only for local host!
 MANAGER_TOKEN_LOCATION=$SW_SETUP/docker/manager_token # only for local host!
     # ^ $SW_SETUP contains MESH_IDENTITY!
