@@ -2,6 +2,7 @@
 # set -e # exit program if one command fails (as subsequent ones are unlikely to succeed then)
 # 'set -e' causes issues as adding and removing ip addresses might result in trivial failures
 # batman_adv_healthcheck already exists to restart the setup if it fails
+NETWORK_NAME=solarswarm
 
 source /etc/environment
 if [ $(echo $WLANDEV | wc --chars) -eq 1 ]; then
@@ -30,7 +31,7 @@ sudo ip link set $WLANDEV promisc on
 sleep 1
 
 # Join IBSS
-sudo iw dev $WLANDEV ibss join solarswarm 2412
+sudo iw dev $WLANDEV ibss join $NETWORK_NAME 2412
 
 # bat0 hinzufügen
 sudo batctl if add $WLANDEV

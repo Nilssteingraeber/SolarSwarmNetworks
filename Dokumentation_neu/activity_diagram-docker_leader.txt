@@ -1,0 +1,37 @@
+@startuml
+title Activity diagram for docker_leader
+start
+repeat
+  if (self is neither leader nor designated leader?) then (yes)
+    :stop docker_leader;
+  endif
+  :code := check_for_health();
+  if (code == 1) then (yes)
+    if (code remains and self is designated leader?) then (yes)
+      :force new cluster and generate new join token with cluster id;
+    endif
+  endif
+
+  if (self is currently leader) then (yes)
+    :check for designated leader update and second cluster;
+    'migrate to new cluster
+    if (found new cluster?) then (yes)
+      :demote and remove nodes, leave swarm, and stop docker_leader;
+    endif
+    'add labels
+    repeat
+      if (can add all labels to node with hostname from file?) then (yes)
+        :change availability of node and delete .labels file;
+      endif
+    repeat while (found unprocessed .labels file?) is (yes)
+    'demote dead managers
+    :deminish patience with unreachable managers;
+    :demote and remove managers which self has no patience with;
+    'promote workers
+    if (below ideal manager count?) then (yes)
+      :promote capable and reachable workers until met;
+    endif
+  endif
+repeat while (self is leader or designated leader?) is (yes)
+stop
+@enduml
