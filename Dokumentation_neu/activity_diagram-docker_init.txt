@@ -1,0 +1,43 @@
+@startuml
+title Activity diagram for docker_init
+start
+if (swarm status inactive?) then (yes)
+  :get designated leader;
+  if (self is designated leader?) then (yes)
+    :add_own_labels();
+    :generate_worker_token();
+    :start docker_leader;
+  else (no)
+    if (no .labels file?) then (yes)
+      stop
+    endif
+    repeat
+      :get worker join token;
+      :attempt to join swarm;
+    repeat while (not in swarm?) is (yes)
+    repeat
+      :provide .labels file to designated leader;
+    repeat while (failed?) is (yes)
+  endif
+endif
+
+repeat
+  if (is manager?) then (yes)
+    if (no own join token?) then (yes)
+      :generate_worker_token();
+    endif
+    if (is leader but docker_leader not active?) then (yes)
+      :start docker_leader;
+    endif
+  endif
+  :code := check_for_health();
+  :check for designated leader change;
+  if (self not designated leader and code != 0?) then (yes)
+    :get new join token with cluster id from designated leader;
+    if (designated in different cluster?) then (yes)
+      :join new cluster;
+    endif
+  endif
+repeat while (swarm status neither inactive nor error)
+stop
+@enduml
