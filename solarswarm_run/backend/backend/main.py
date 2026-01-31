@@ -133,7 +133,7 @@ def ros_yaml_repr(obj) -> str:
 
 def run_ros2_command(nid: str, ros_cmd: str, timeout: int = 10):
     """Führe ros2-Befehle in einer gesourcten bash-Shell aus und setze ROS_DOMAIN_ID auf nid."""
-    full = f"source /opt/ros/{ROS_DISTRO}/setup.bash && ROS_DOMAIN_ID={nid} {ros_cmd}"
+    full = f"source /opt/ros/{ROS_DISTRO}/setup.bash && ROS_DOMAIN_ID={0} {ros_cmd}"
     try:
         completed = subprocess.run(["bash", "-lc", full], capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired as e:

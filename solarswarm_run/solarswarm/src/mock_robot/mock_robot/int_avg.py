@@ -9,7 +9,8 @@ from custom_interfaces.srv import IntAvgService
 
 class IntAvgNode(Node):
     def __init__(self):
-        self.createService('int_avg', IntAvgService, 'int_avg', self.int_avg_callback)
+        super().__init__('int_avg')
+        self.create_service(IntAvgService, 'int_avg', self.int_avg_callback)
 
     def int_avg_callback(self, request, response):
         response.avg = round(sum(request.ints)/len(request.ints), 2) # round to 2 decimal places

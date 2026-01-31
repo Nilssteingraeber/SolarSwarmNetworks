@@ -11,7 +11,8 @@ from random import randint
 
 class IntRngNode(Node):
     def __init__(self):
-        self.createService('int_rng', IntRngService, 'int_rng', self.int_rng_callback)
+        super().__init__('int_rng')
+        self.create_service(IntRngService, 'int_rng', self.int_rng_callback)
 
     def int_rng_callback(self, request, response):
         response.number = randint(request.min, request.max)
