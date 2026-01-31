@@ -1,11 +1,11 @@
 #!/bin/bash
-echo "[docker_leader] Starting... ($(date +%T))" >>$LOG_OUT
+source /etc/environment
 LEADER_CHECK_DELAY=15 # in seconds
 LEADER_PATIENCE=4
 # minimum of LEADER_PATIENCE * LEADER_CHECK_DELAY total seconds (1,5 minutes by default)
 QUORUM_LOSS_TOLERANCE=30
 # demotion after LEADER_PATIENCE failed pings
-IDEAL_MANAGER_COUNT=3
+IDEAL_MANAGER_COUNT=1
 SW_SETUP=/home/$MESH_IDENTITY/solarswarm_setup
 MANAGER_LIST=$SW_SETUP/docker/manager_list
 RESET_PATIENCE=true # 
@@ -14,6 +14,7 @@ SSH_TIMEOUT="-o ConnectTimeout=1" # see service_helper.bash
 HOST_CHECKING="-o StrictHostKeyChecking=no" # see service_helper.bash
 LOG_OUT=$SW_SETUP/logs/docker_leader.log # see docker_init.bash
 REMOVE_DUPLICATE_HOSTNAMES=true
+
 # check_duplicate_hostnames() removes nodes using the same hostname as another node that is 'Ready'
 # only does so if only one node has status 'Ready'
 # otherwise a hostname is used my multiple hosts and manual intervention is required
@@ -24,48 +25,65 @@ REMOVE_DUPLICATE_HOSTNAMES=true
 # when bravo (the host) rejoined, it was given a new ID and the status 'Ready'
 # commands using the then ambiguous hostname bravo failed
 
-# function to check for and remove duplicate hostnames as hostnames are not unique in a swarm
 check_duplicate_hostnames() {
-    # optionally pass one hostname as argument to filter, i.e.: 'check_duplicate_hostnames alfa'
-    hostnames=$(sudo docker node ls --filter "name=$1" --format "{{.Hostname}}")
-    for name in $(cat $SW_SETUP/ssh_identities/names); do
-        occurances=$(echo $hostnames | grep -E "$name " | wc -w)
-        # hosts_ready=0; hosts_down=0; hosts_unknown=0; hosts_disconnected=0
-        if [ $occurances -le 1 ]; then continue; fi
-        if [ $occurances -gt 1 ]; then
-            statuses=$(sudo docker node ls --filter "name=$name" --format "{{.ID}} {{.Status}}")
-            # get number of IDs using the same hostname per status
-            # output is assigned as words in a single line
-            # grep returns a selection of lines which contain a certain word
-            # therefore replace spaces with newline characters, then use grep
-            # s to replace, g for global, '/ /\n/' to replace ' ' with '\n'
-            hosts_ready=$(echo $statuses | sed "s/ /\n/g" | grep "Ready" | wc -w);
-            hosts_down=$(echo $statuses | sed "s/ /\n/g" | grep "Down" | wc -w);
-            hosts_unknown=$(echo $statuses | sed "s/ /\n/g" | grep "Unknown" | wc -w);
-            hosts_disconnected=$(echo $statuses | sed "s/ /\n/g" | grep "Disconnected" | wc -w);
-            echo "[docker_leader] Warning: Found $occurances nodes using hostname $name" >>$LOG_OUT
-            echo "    Ready       : $hosts_ready" >>$LOG_OUT
-            echo "    Down        : $hosts_down" >>$LOG_OUT
-            echo "    Unknown     : $hosts_unknown" >>$LOG_OUT
-            echo "    Disconnected: $hosts_disconnected" >>$LOG_OUT
-            if [ $REMOVE_DUPLICATE_HOSTNAMES == true ] && [ $hosts_ready -eq 1 ]; then
-                sudo docker node ls --filter "name=$name" --format "{{.ID}} {{.Status}}" | \
-                while read id status; do
-                    # note that it might take a few seconds for the leader to consider a host 'Down' after they left
-                    # "Error response from daemon: [...] is not down and can't be removed"
-                    
-                    # if [ ! $status == "Ready" ]; then # unsure if 'Unknown' or 'Disconnected' count
-                    if [ $status == "Down" ]; then
-                        if sudo docker node rm -f $id &>/dev/null; then
-                            echo "[docker_leader] Removed node $id with duplicate hostname $name and status $status"
-                        fi
-                    fi
-                done
-            elif [ $hosts_ready -gt 1 ]; then
-                echo "[docker_leader] Error: Found $hosts_ready 'Ready' nodes using hostname $name. This means that multiple hosts were given the same hostname. If this error persists, please remove all but one of these nodes and set them up again with another name that is not already in use." >>$LOG_OUT
+    # check for and remove duplicats of hostname given as parameter
+    # return number of remaining duplicates or -1 if something goes wrong
+    if [ -z $1 ]; then
+        echo "[docker_leader] Check for duplicate hostnames failed: No hostname was provided" >>$LOG_OUT
+        return -1
+    fi
+
+    occurances=$(sudo docker node ls --filter "name=$1" --format "{{.Hostname}}" | wc -w)
+    if [ -z $occurances ]; then # docker node ls failed
+        return -1
+    elif [ $occurances -le 1 ]; then # no duplicates
+        return 0
+    fi
+
+    # at least one duplicate
+    nodes_ready=0; nodes_down=0; nodes_unknown=0; nodes_disconnected=0
+    if [ $occurances -gt 1 ]; then
+        statuses=$(sudo docker node ls --filter "name=$1" --format "{{.ID}}:{{.Status}}:{{.ManagerStatus}}")
+        # get number of IDs using the same hostname per status
+        for status in $statuses; do
+            read node_id status m_status <<< $(echo $status | sed 's/:/ /g')
+            if [ -z $node_id ] || [ -z $status ]; then continue; fi # skip empty
+            if [ $status == "Ready" ]; then
+                ((nodes_ready++))
+            elif [ $status == "Down" ]; then
+                ((nodes_down++))
+            elif [ $status == "Unknown" ]; then
+                ((nodes_unknown++))
+            elif [ $status == "Disconnected" ]; then
+                ((nodes_disconnected++))
             fi
+        done
+        echo "[docker_leader] Warning: Found $occurances nodes using hostname $name" >>$LOG_OUT
+        echo "    Ready       : $nodes_ready" >>$LOG_OUT
+        echo "    Down        : $nodes_down" >>$LOG_OUT
+        echo "    Unknown     : $nodes_unknown" >>$LOG_OUT
+        echo "    Disconnected: $nodes_disconnected" >>$LOG_OUT
+        if [ $REMOVE_DUPLICATE_HOSTNAMES == true ] && [ $nodes_ready -le 1 ]; then
+            # case: one Ready -> remove all others
+            # case: none Ready -> remove all
+            for status in $statuses; do
+                read node_id status m_status <<< $(echo $status | sed 's/:/ /g')
+                echo $node_id $status $m_status
+                if [ -z $node_id ] || [ $status == "Ready" ]; then continue; fi # skip Ready
+                if [ ! -z $m_status ] && [ ! $m_status == "Reachable" ]; then sudo docker node demote $id; fi # demote if manager
+                sudo docker node rm -f $node_id
+            done
+        elif [ $nodes_ready -gt 1 ]; then
+            echo "[docker_leader] Error: Found $nodes_ready 'Ready' nodes using hostname $name. This means that multiple hosts were given the same hostname. If this error persists, please remove all but one of these nodes and set them up again with another name that is not already in use." >>$LOG_OUT
         fi
-    done
+    fi
+    duplicates=$(sudo docker node ls --filter "name=$1" --format "{{.Hostname}}" | wc -w)
+    if [ ! -z $duplicates ]; then
+        ((duplicates--))
+        return $duplicates
+    else
+        return -1
+    fi
 }
 
 remove_host_from_manager_list() {
@@ -84,27 +102,26 @@ check_leader() {
 
 check_for_health() { # this is a copy from docker_init.bash
     # see check_for_healtch() in docker_init.bash for more details
-    if sudo journalctl -u docker -n10 --since "10s ago" | grep "-- No entries --"; then
+    if sudo journalctl -u docker -n10 --since "10s ago" | grep -q "No entries" ; then
         return 0 # healthy
-    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="swarm does not have a leader" | grep "-- No entries --"; then
+    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="swarm does not have a leader" | grep -q "No entries"; then
         # note: this was only tested on a manager in a swarm consisting only of two managers
         return 1 # loss of quorum
-    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="no route to host" | grep "-- No entries --"; then
+    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="no route to host" | grep -q "No entries"; then
         return 2 # isolated
-    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="connection refused" | grep "-- No entries --"; then
+    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="connection refused" | grep -q "No entries"; then
         return 3 # manager left cluster
-    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="authentication handshake failed" | grep "-- No entries --"; then
+    elif ! sudo journalctl -u docker -n10 --since "10s ago" --grep="authentication handshake failed" | grep -q "No entries"; then
         return 4 # manager joined different cluster
     else 
-        return -1 # unknown case
+        return 255 # unknown case
     fi
+    # note: 'var=$(check_for_health)' returns the content of journalctl, not the return code
 }
-
-source /etc/environment
 
 echo "" > $MANAGER_LIST.tmp # new count for tracking patience with managers
 
-echo "[docker_leader] Starting... ($(date +%T))" >>$LOG_OUT
+echo "[docker_leader] Starting... ($(date +'%D %T'))" >>$LOG_OUT
 while [ 0 ]; do
     # update designated leader
     designated_leader=$(head -1 $SW_SETUP/docker/leader)
@@ -126,26 +143,29 @@ while [ 0 ]; do
     fi
 
     # check for quorum loss
-    code=$(check_for_healtch) # code 1 for loss of quorum
+    check_for_health
+    code=$? # code 1 for loss of quorum
     if [ ! -z $code ] && [ $code -eq 1 ]; then
-        echo "[docker_leader] Detected loss of quorum - management tasks not possible ($(date +%D +%T))"
+        echo "[docker_leader] Detected loss of quorum - management tasks not possible ($(date +'%D %T'))"
         # wait for cluster to fix itself
         error_time=0
         while [ $error_time -le $QUORUM_LOSS_TOLERANCE ]; do
             sleep 5
             error_time=$((error_time + 5))
-            code=$(check_for_healtch) # check again
+            check_for_health
+            code=$? # check again
             if [ ! -z $code ] && [ ! $code -eq 1 ]; then break; fi
         done
 
         if [ ! -z $code ] && [ $code -eq 1 ] && [ $MESH_IDENTITY == $designated_leader ]; then
-            echo "[docker_leader] Loss of quorum still persists. Forcing new cluster as designated leader... ($(date +%D +%T))" >>$LOG_OUT
+            echo "[docker_leader] Loss of quorum still persists. Forcing new cluster as designated leader... ($(date +'%D %T'))" >>$LOG_OUT
             # eventually force new cluster, requiring all nodes to rejoin
             # rejoining is handled by docker_init
             # as this probably ends all running docker services on those nodes, critical robot functions (such as steering) should not run as a service
             sudo docker swarm init --force-new-cluster --advertise-addr $MESH_IP
             echo "$(sudo docker swarm join-token -q worker 2>/dev/null) $MESH_IP:2377" >$WORKER_TOKEN_LOCATION
-            sudo docker info | awk '/ClusterID/ {print 2}' >>$WORKER_TOKEN_LOCATION # Add ClusterID beneath token
+            cluster_id=$(sudo docker info | awk '/ClusterID/ {print $2}')
+            echo $cluster_id >>$WORKER_TOKEN_LOCATION # add ClusterID beneath token
             echo "[docker_init] Generated worker join token: $(head -1 $WORKER_TOKEN_LOCATION)" >>$LOG_OUT
             # sudo systemctl restart docker_leader.service
             # exit 0
@@ -154,10 +174,13 @@ while [ 0 ]; do
 
     # designated must always run docker_leader - even if not leader
     # designated leader must init new swarm if nevessary, but is no longer responsible for managerer management
-    if [ ! -z $designated_leader ] && [ ! -z $is_manager ] && [ $MESH_IDENTITY == $designated_leader ] && [ $is_manager == true ]; then
-        echo "[docker_leader] Designated leader is no longer leader - sleeping early... ($(date +%T))" >>$LOG_OUT
-        sleep $LEADER_CHECK_DELAY
-        continue
+    if [ ! -z $designated_leader ] && [ $MESH_IDENTITY == $designated_leader ]; then
+        manager_status=$(sudo docker node ls --filter "name=$MESH_IDENTITY" --format {{.ManagerStatus}})
+        if [ $? ] && [ ! -z $manager_status ] && [ ! $manager_status == "Leader" ]; then
+            echo "[docker_leader] Designated leader is no longer leader - sleeping early... ($(date +%T))" >>$LOG_OUT
+            sleep $LEADER_CHECK_DELAY
+            continue
+        fi
     fi
 
     # picture a cluster split into two parts, leaving the designated leader in a minority of managers
@@ -176,7 +199,7 @@ while [ 0 ]; do
                 if scp $SSH_TIMEOUT $HOST_CHECKING $designated_leader:$worker_loc $SW_SETUP/docker/cluster_check; then
                     own_cluster_id=$(head -2 $SW_SETUP/docker/worker_token | tail -1)
                     other_cluster_id=$(head -2 $SW_SETUP/docker/cluster_check | tail -1)
-                    if [ ! -z $own_cluster_id ] && [ ! -z $other_cluster_id] && [ ! $own_cluster_id == $other_cluster_id ]; then
+                    if [ ! -z $own_cluster_id ] && [ ! -z $other_cluster_id ] && [ ! $own_cluster_id == $other_cluster_id ]; then
                         # more than one cluster
                         echo "[docker_leader] Self has ClusterID $own_cluster_id while designated leader has ClusterID $other_cluster_id."
                         if [ $purge_second_cluster == true ]; then
@@ -198,6 +221,8 @@ while [ 0 ]; do
 
                             # leave
                             sudo docker swarm leave -f
+                            sudo systemctl stop docker_leader.service
+                            exit 0
                         fi
                     fi
                 fi    
@@ -215,7 +240,7 @@ while [ 0 ]; do
         make_active=true
         hostname=$(echo $file | sed "s/.labels//")
         check_duplicate_hostnames $hostname # prevent ambiguous hostnames
-        if [ ! -z $hostname ] && [ $hostname == $MESH_IDENTITY ]; then # skip own name
+        if [ $? ] && [ ! -z $hostname ] && [ $hostname == $MESH_IDENTITY ]; then # skip own name
             echo "[docker_leader] Warning: Found labels file of node $hostname (own name)" >>$LOG_OUT
             continue
         elif grep -E "^$hostname$" $SW_SETUP/ssh_identities/names; then
@@ -248,64 +273,55 @@ while [ 0 ]; do
             fi
         fi
     done
-    
-    #####
-    # TODO: remove echo, sleep, and continue below and test administering managers 
-    # echo "[docker_leader] Debug: Loop cycle done (skipped managers) - sleeping for $LEADER_CHECK_DELAY seconds" >>$LOG_OUT
-    # sleep $LEADER_CHECK_DELAY
-    # continue
-    #####
 
     echo "[docker_leader] Checking on managers..."
 
     # check on managers
     # demote unreachable hosts if leader has lost patience
-    # error=$(sudo docker info --format '{{.Swarm.Error}}')
-    if [ -z $error ]; then # TODO: change method of detecting errors
-        managers=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}}:{{.ManagerStatus}}")
-        echo $managers
-    fi
-    for line in $managers; do
-        if [ ! -z $line ]; then
-            read hostname status <<< $(echo $line | sed 's/:/ /')
-            # check manager status
-            if [ $status == "Leader" ] || [ $hostname == $MESH_IDENTITY ] || [ $hostname == $designated_leader ]; then
-                continue
-            fi
-            if [ $status == "Unreachable" ]; then
-                # add to list or update
-                if ! grep -E "^$hostname [0]+$" $MANAGER_LIST; then # not on list yet
-                    echo "$hostname 0" >> $MANAGER_LIST
-                else # already on list
-                    # filter for hostname, only take first occurance, then get count
-                    count=$(grep -E "^$hostname [0-9]+$" $MANAGER_LIST | head -1 | awk '{print $2}')
-                    new_count=$(($count+1))
-                    if [ $new_count -ge $LEADER_PATIENCE ]; then
-                        echo "[docker_leader] Lost patience with host $hostname... ($(date +%T))" >>$LOG_OUT
-                        if sudo docker node demote $hostname && sudo docker node rm $hostname; then
-                            # successfully removed from swarm
-                            remove_host_from_manager_list $hostname
-                            echo "[docker_leader] Demoted and removed host $hostname ($(date +%T))" >>$LOG_OUT
+    managers=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}}:{{.ManagerStatus}}")
+    if [ $? ]; then
+        for line in $managers; do
+            if [ ! -z $line ]; then
+                read hostname status <<< $(echo $line | sed 's/:/ /')+
+                # check manager status
+                if [ $status == "Leader" ] || [ $hostname == $MESH_IDENTITY ] || [ $hostname == $designated_leader ]; then
+                    continue
+                fi
+                if [ $status == "Unreachable" ]; then
+                    # add to list or update
+                    if ! grep -E "^$hostname [0]+$" $MANAGER_LIST; then # not on list yet
+                        echo "$hostname 0" >> $MANAGER_LIST
+                    else # already on list
+                        # filter for hostname, only take first occurance, then get count
+                        count=$(grep -E "^$hostname [0-9]+$" $MANAGER_LIST | head -1 | awk '{print $2}')
+                        new_count=$(($count+1))
+                        if [ $new_count -ge $LEADER_PATIENCE ]; then
+                            echo "[docker_leader] Lost patience with host $hostname... ($(date +%T))" >>$LOG_OUT
+                            if sudo docker node demote $hostname && sudo docker node rm $hostname; then
+                                # successfully removed from swarm
+                                remove_host_from_manager_list $hostname
+                                echo "[docker_leader] Demoted and removed host $hostname ($(date +'%D %T'))" >>$LOG_OUT
+                            fi
+                        else
+                            sed -i "s/^$hostname $count$/$hostname $new_count/" $MANAGER_LIST # replace old count
                         fi
-                    else
-                        sed -i "s/^$hostname $count$/$hostname $new_count/" $MANAGER_LIST # replace old count
                     fi
-                fi
-            else # Reachable ("role=manager" already filters workers)
-                if [ $RESET_PATIENCE == true ]; then
-                    remove_host_from_manager_list $hostname
-                fi
-            fi # check manager status
-        fi
-    done
+                else # Reachable ("role=manager" already filters workers)
+                    if [ $RESET_PATIENCE == true ]; then
+                        remove_host_from_manager_list $hostname
+                    fi
+                fi # check manager status
+            fi
+        done
+    fi
 
     # promote new hosts if below ideal count
     # note: it would be better to modify this in the future so that an uneven manager count is avoided
     echo "[docker_leader] Checking for promotions..." >>$LOG_OUT
     current_manager_count=""
     current_manager_count=$(sudo docker node ls --filter "role=manager" --format "{{.Hostname}}" | wc -w)
-    if [ ! -z $current_manager_count ] && [ $current_manager_count -lt $IDEAL_MANAGER_COUNT ]; then
-        echo "[docker_leader] Found only $current_manager_count managers though $IDEAL_MANAGER_COUNT are desired ($(date +%T))"
+    if [ $? ] && [ ! -z $current_manager_count ] && [ $current_manager_count -lt $IDEAL_MANAGER_COUNT ]; then
+        echo "[docker_leader] Found only $current_manager_count managers though $IDEAL_MANAGER_COUNT are desired ($(date +'%D %T'))""
         node_ls=$(sudo docker node ls --filter "role=worker" \
             --filter "node.label=can_become_manager=true" \
             --format "{{.Hostname}}:{{.Status}}") # get workers with label can_become_manager=true
