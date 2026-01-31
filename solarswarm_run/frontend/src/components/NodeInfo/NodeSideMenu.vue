@@ -91,6 +91,9 @@ const currentBatteryStatus = computed(() => {
 
 
 const batteryLevelText = computed(() => {
+    if (viewedRobot?.value?.battery && viewedRobot?.value?.battery.toString() === "-1") {
+        return "?"
+    }
     return Math.round(viewedRobot?.value?.battery ?? 0).toString()
 })
 

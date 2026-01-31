@@ -26,9 +26,6 @@ class Debug404Handler(SimpleHTTPRequestHandler):
         clean_path = urlparse(self.path).path
         requested_path = os.path.join(SERVE_DIR, clean_path.lstrip("/"))
         
-        print(f"Requested path: {self.path}") # Logs the original path
-        print(f"Cleaned path: {clean_path}") # Logs the path without the query string
-        
         # If the file exists, we need to temporarily set self.path to the clean path
         # so that the super().do_GET() method serves the correct file.
         if os.path.isfile(requested_path):
