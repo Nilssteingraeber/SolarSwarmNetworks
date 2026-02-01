@@ -239,8 +239,46 @@ while [ 0 ]; do
     for file in $(ls $LABELS_TARGET | grep .labels); do
         make_active=true
         hostname=$(echo $file | sed "s/.labels//")
+
+        nodes_in_cluster=$(sudo docker node ls --format "{{.Hostname}}:{{.Availability}}:{{.ManagerStatus}}")
+        if [ $? ]; then # some security measures
+            nodes_with_hostname=(echo $nodes_in_cluster | sed 's/ /\n/g' | grep -E "^$hostname:[A-Za-z]+:[A-Za-z]*$" 2>/dev/null)
+            occurances=$()
+
+            # check if hostname exists
+            if [ $occurances -eq 0 ]; then # hostname not in cluster -> possibly old labels file
+                rm $LABELS_TARGET/$file
+                continue
+            elif [ $occurances -gt 1 ]; then # duplicate hostnames
+                continue
+            fi
+
+            # prevent update of nodes that are not on pause or a manager
+            read c_hostname c_availability c_manager_status <<< $(echo $nodes_with_hostname | sed 's/:/ /g')
+            if [ ! -z $c_availability ] && [ $c_availability == "Active" ]; then # is not paused
+                rm $LABELS_TARGET/$file
+                continue
+            elif [ ! -z $c_manager_status ]; then # is manager
+                rm $LABELS_TARGET/$file
+                continue
+            fi
+        fi
+
         check_duplicate_hostnames $hostname # prevent ambiguous hostnames
-        if [ $? ] && [ ! -z $hostname ] && [ $hostname == $MESH_IDENTITY ]; then # skip own name
+        if [ ! $? ]; then continue; fi # possibly duplicate hostnames
+        
+        # workers can not know who is current leader and send labels to all managers
+        # check if node already has labels
+        if [ $AVOID_ADDING_LABELS_AGAIN == true ]; then
+            present_labels=$sudo docker node inspect $hostname --format {{.Spec.Labels}})
+            # from testing: "map[]" if none, else "map[KEY:VALUE]"
+            if [ $? ] && echo $present_labels | grep ":"; then
+                rm $LABELS_TARGET/$file
+                continue
+            fi
+        fi
+
+        if [ ! -z $hostname ] && [ $hostname == $MESH_IDENTITY ]; then # skip own name
             echo "[docker_leader] Warning: Found labels file of node $hostname (own name)" >>$LOG_OUT
             continue
         elif grep -E "^$hostname$" $SW_SETUP/ssh_identities/names; then
@@ -274,7 +312,7 @@ while [ 0 ]; do
         fi
     done
 
-    echo "[docker_leader] Checking on managers..."
+    # echo "[docker_leader] Checking on managers..."
 
     # check on managers
     # demote unreachable hosts if leader has lost patience
