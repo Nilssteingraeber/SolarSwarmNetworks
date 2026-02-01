@@ -9,7 +9,8 @@ from mock_robot.util.robot_util import Util
 
 class ServiceServerMacNode(Node):
     def __init__(self):
-        self.createService('get_service_server_mac', GetServiceServerMac, 'get_service_server_mac', self.get_service_server_mac_callback)
+        super().__init__('get_service_server_mac')
+        self.create_service(GetServiceServerMac, 'get_service_server_mac', self.get_service_server_mac_callback)
 
     def get_service_server_mac_callback(self, request, response):
         mac = Util.get_mac()

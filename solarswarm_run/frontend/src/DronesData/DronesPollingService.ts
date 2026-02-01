@@ -68,45 +68,56 @@ export class DronesPollingService {
 
         try {
             const robots = await this.fetchRobots()
-            const mergedBatch: Robot[] = []
 
-            for (const robot of robots) {
-                try {
-                    const [status, neighbors] = await Promise.all([
-                        this.fetchLatestStatus(robot.robot_id),
-                        this.fetchNeighbors(robot.robot_id)
-                    ])
-
-                    const connectivity: Record<string, number> = {}
-                    for (const n of neighbors) {
-                        const neighborRobot = robots.find(r => r.robot_id === n.neighbor)
-                        if (neighborRobot) connectivity[neighborRobot.nid] = n.strength ?? 0
-                    }
-
-                    const merged: Robot = {
-                        ...robot,
-                        ...status,
-                        connectivity
-                    }
-
-                    mergedBatch.push(merged)
-                } catch (robotErr) {
-                    console.warn(
-                        "[DronesPolling] Failed robot fetch",
-                        robot.robot_id,
-                        robotErr
-                    )
-                }
+            const robotById = new Map<string, typeof robots[number]>()
+            for (const r of robots) {
+                robotById.set(r.nid, r)
             }
 
-            // ✅ SINGLE BATCH WRITE
-            if (mergedBatch.length) {
+            const mergedResults = await Promise.all(
+                robots.map(async (robot) => {
+                    try {
+                        const [status, neighbors] = await Promise.all([
+                            this.fetchLatestStatus(robot.robot_id),
+                            this.fetchNeighbors(robot.robot_id)
+                        ])
+
+                        const connectivity: Record<string, number> = {}
+                        for (const n of neighbors) {
+                            const neighborRobot = robotById.get(n.robot_id.toString())
+                            if (neighborRobot) {
+                                connectivity[neighborRobot.nid] = n.strength ?? 0
+                            }
+                        }
+
+                        return {
+                            ...robot,
+                            ...status,
+                            connectivity
+                        } as Robot
+                    } catch (err) {
+                        console.warn(
+                            "[DronesPolling] Failed robot fetch",
+                            robot.robot_id,
+                            err
+                        )
+                        return null
+                    }
+                })
+            )
+
+            const mergedBatch = mergedResults.filter(
+                (r): r is Robot => r !== null
+            )
+
+            if (mergedBatch.length > 0) {
                 await this.addRobotsBatch(mergedBatch, timestamp)
             }
         } catch (err) {
             console.error("[DronesPolling] Poll failed", err)
         }
     }
+
 
     // ==============================
     // FETCHERS (SIM OR HTTP)
@@ -161,10 +172,11 @@ export class DronesPollingService {
 
         const latest = list[list.length - 1]
 
+
         return {
             battery: latest.battery,
             cpu_1: latest.cpu_1,
-            point: { lat: latest.point.x, lon: latest.point.y, alt: 125.0 },
+            point: { lat: latest?.point?.x, lon: latest.point?.y, alt: 125.0 },
             orientation: latest.orientation,
             last_heard: latest.last_heard
         }

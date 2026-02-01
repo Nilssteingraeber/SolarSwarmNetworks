@@ -196,7 +196,7 @@ services:
       context: ./backend/backend/file_server
       dockerfile: tileserver.Dockerfile
     volumes:
-      - ./bigData/osm/:/osmdata/
+      - ./bigData/osmdata/:/osmdata/
       - ./backend/backend/file_server/osm/tileserver:/tileserver
     ports:
       - "9015:9015"

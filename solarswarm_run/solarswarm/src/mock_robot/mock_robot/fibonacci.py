@@ -10,7 +10,8 @@ from custom_interfaces.srv import FibonacciService
 
 class FibonacciNode(Node):
     def __init__(self):
-        self.createService('fibonacci', FibonacciService, 'fibonacci', self.fibonacci_callback)
+        super().__init__('fibonacci')
+        self.create_service(FibonacciService, 'fibonacci', self.fibonacci_callback)
 
     def fibonacci_callback(self, request, response):
         # f0  f1  f2  f3  f4  f5  ...

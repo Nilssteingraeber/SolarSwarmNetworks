@@ -21,29 +21,34 @@ const chartRef = ref<HTMLCanvasElement | null>(null)
 let cpuChart: Chart<"line", any[], any> | null = null
 let updateTimer: number | null = null
 
-// Fetch full 60s window: left 30s = past, right 30s = future
+
 async function refreshChartData() {
     const nid = viewedDroneStore.viewedNid
     if (!nid) return
 
     try {
         const currentTime = timeStore.currentTime
+        const windowMs = 60_000
+        await historyStore.ensureDroneDataLoaded(nid, currentTime, windowMs)
 
-        await historyStore.ensureDroneDataLoaded(nid, currentTime, 60_000)
+        const history = historyStore.cache.get(nid)
+        if (!history || history.length === 0) return
 
-        const nidMap = historyStore.cache.get(nid)
-        if (!nidMap) return
+        const pastStart = currentTime - 30_000
+        const futureEnd = currentTime + 30_000
 
-        // Rest of your existing chart data logic...
-        const halfWindowMs = 30 * 1000
-        const pastStart = currentTime - halfWindowMs
-        const futureEnd = currentTime + halfWindowMs
+        // Use slice on the already-sorted history
+        let startIdx = 0, endIdx = history.length - 1
+        while (startIdx < history.length && history[startIdx].timestamp < pastStart) startIdx++
+        while (endIdx >= 0 && history[endIdx].timestamp > futureEnd) endIdx--
 
-        const allEntries = Array.from(nidMap.entries())
-            .filter(([ts]) => ts >= pastStart && ts <= futureEnd)
-            .sort(([a], [b]) => a - b)
+        const windowEntries = history.slice(startIdx, endIdx + 1)
 
-        // Your existing data filling logic...
+        if (cpuChart) {
+            cpuChart.data.labels = windowEntries.map(e => e.timestamp)
+            cpuChart.data.datasets[0].data = windowEntries.map(e => (e.data as any)[props.dataFieldName])
+            cpuChart.update('none') // Smooth update without animation overhead
+        }
     } catch (error) {
         console.error('Chart refresh failed:', error)
     }

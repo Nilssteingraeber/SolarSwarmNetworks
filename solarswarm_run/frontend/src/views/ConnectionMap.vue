@@ -54,29 +54,31 @@ const colorScale = d3.scaleLinear<string>()
 // ----------------------------------------------------
 const updateRobots = async () => {
     const currentTime = timeStore.currentTime
-    const snapshot = new Map<string, ProcessedRobot>()
+    const snapshot: ProcessedRobot[] = []
     const windowMs = 2500
+    const THRESHOLD_STALE = 5 // example value
 
-    // Step 1: get all drone NIDs, including ones not cached yet
-    const cachedNids = Array.from(historyStore.cache.keys())
-    const allNids: string[] = [...cachedNids] // optionally, merge with NIDs from DB if you track them separately
+    const allNids = Array.from(historyStore.cache.keys())
 
-    // Step 2: ensure cache is loaded for each drone
+    // Parallel load to avoid sequential await lag
     await Promise.all(allNids.map(nid => historyStore.ensureDroneDataLoaded(nid, currentTime, windowMs)))
 
     for (const nid of allNids) {
         const entry = await historyStore.getSnapshotAt(nid, currentTime, windowMs)
-        if (!entry || !entry.point) continue
 
-        const timestamp = historyStore.cache.get(nid)?.get(entry.timestamp)?.timestamp ?? currentTime
-        snapshot.set(nid, {
-            ...entry,
-            time_since_last_heard: (currentTime - timestamp) / 1000,
-            is_stale: (currentTime - timestamp) / 1000 >= THRESHOLD_STALE,
+        if (!entry) continue
+
+        // Logic is now clean: entry.timestamp is the exact time we "heard" the robot
+        const timeSinceLastHeard = (currentTime - entry.timestamp) / 1000
+
+        snapshot.push({
+            ...entry.data,
+            time_since_last_heard: timeSinceLastHeard,
+            is_stale: timeSinceLastHeard >= THRESHOLD_STALE,
         })
     }
 
-    robots.value = Array.from(snapshot.values())
+    robots.value = snapshot
     requestAnimationFrame(draw)
 }
 
