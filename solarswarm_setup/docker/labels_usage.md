@@ -14,11 +14,11 @@ These labels will be used to put constraints on docker swarm services to limit w
 - can_become_manager
 
 ### Leader
-- supposed_leader
+- is_designated_leader - currently not used
 - is_leader - currently not used as it is not reassigned if the leader changes
 
 ### Hardware
-- architecture=x86_64
+- architecture=x86_64 # or ARM64, System z, PowerPC64, RISC-V, x86
 - cpus=8 - example for 8 CPUs
 - ram_ge4 - "RAM is greater equal 4 GB"
 - ram_ge8 - "RAM is greater equal 8 GB"
@@ -28,7 +28,7 @@ These labels will be used to put constraints on docker swarm services to limit w
 - ram_lt16 - "RAM is less than 16 GB"
 - has_gpu
 
-> Note: It is suggested that if a node receives for instance ram_ge16, it is also given ram_ge8 and ram_ge4 as a service might only require ram_ge8.
+> Note: If a node is given a label that would implicate another label (for instance ram_ge16), it should also given the other label (ram_ge8, ram_ge4, ...) a service constraints can only use a logical AND when combined.
 
 ### Specific Selection
 - group_a - used to select a node or group of nodes for specific tasks or tests
