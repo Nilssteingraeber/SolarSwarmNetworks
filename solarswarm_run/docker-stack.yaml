@@ -72,7 +72,7 @@ services:
       placement:
         max_replicas_per_node: 1
         constraints:
-          - node.labels.ram_ge8 == true
+          - node.labels.group_a == true
     
   get_service_server_mac_example:
     deploy:
@@ -87,7 +87,7 @@ services:
       placement:
         max_replicas_per_node: 1
         constraints:
-          - node.labels.ram_ge8 == true
+          - node.labels.group_a == true
 
   int_rng_example:
     networks:
@@ -98,7 +98,7 @@ services:
       placement:
         max_replicas_per_node: 1
         constraints:
-          - node.labels.ram_ge8 == true
+          - node.labels.group_a == true
 
   str_to_lower_upper_example:
     networks:
@@ -109,7 +109,7 @@ services:
       placement:
         max_replicas_per_node: 1
         constraints:
-          - node.labels.ram_ge8 == true
+          - node.labels.group_a == true
 
   ### 3D - Meshes on Map ###
   # Deutschland – Zero – Version 2.0
