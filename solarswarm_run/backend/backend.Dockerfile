@@ -23,4 +23,4 @@ EXPOSE 8000
 ENV ROS_DISTRO=jazzy
 
 # Start command that sources ROS and starts FastAPI
-CMD ["bash", "-lc", "source /opt/ros/jazzy/setup.bash && cd /app && uvicorn main:app --host 0.0.0.0 --port 8000"]
+CMD ["bash", "-lc", "source /opt/ros/jazzy/setup.bash && cd /app && python3 setup.py && uvicorn main:app --host 0.0.0.0 --port 8000"]

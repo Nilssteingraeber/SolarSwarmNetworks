@@ -10,10 +10,10 @@ import models
 print("Setup Datenbank...")
 
 # 1. Tabellen erstellen
-#print("1. Erstelle Tabellen...")
-#models.Base.metadata.drop_all(bind=engine)  # Altes löschen
-#models.Base.metadata.create_all(bind=engine)
-#print("Fertig")
+print("1. Erstelle Tabellen...")
+models.Base.metadata.drop_all(bind=engine)  # Altes löschen
+models.Base.metadata.create_all(bind=engine)
+print("Fertig")
 
 # 2. Daten einfügen
 print("2.Füge Standarddaten ein...")
