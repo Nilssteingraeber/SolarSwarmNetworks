@@ -664,6 +664,7 @@ elif [ $1 == "stop" ]; then
         sudo systemctl stop docker_leader.service
         sudo systemctl stop docker_init.service
         sudo systemctl stop rx_copy.service
+        sudo docker swarm leave -f
     elif [ $2 == "batman_adv_setup" ]; then
     	sudo systemctl stop batman_adv_setup.service
     elif [ $2 == "batman_adv_healthcheck" ]; then
@@ -674,6 +675,7 @@ elif [ $1 == "stop" ]; then
         sudo systemctl stop docker_leader.service
     elif [ $2 == "docker_init" ]; then
         sudo systemctl stop docker_init.service
+        sudo docker swarm leave -f
     elif [ $2 == "rx_copy" ]; then
         sudo systemctl stop rx_copy.service
     else

@@ -74,12 +74,17 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: securepassword
     ports:
+      - "5432:5432" # sonst auf 5433
       - "5173:5173"
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   adminer: # to view tables and edit db -> access via localhost:8080 in browser and use db login credentials above
     image: adminer
@@ -102,12 +107,12 @@ services:
       ROS_DISTRO: jazzy
     ports:
       - "8000:8000"
-    # depends_on:
-    #   db:
-    #     condition: service_healthy
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
-      - ./logs/:/tmp/logs/
-    # Für Development mit Auto-Reload
+      - ./backend/backend:/app
+      #- ./logs/:/tmp/logs/
     networks:
       - internal
 
