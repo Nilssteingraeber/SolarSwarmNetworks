@@ -1,6 +1,6 @@
 # models.py
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, BigInteger, JSON
-from sqlalchemy.ext.declarative import declarative_base
+from database import declarative_base
 from sqlalchemy.orm import relationship
 
 Base = declarative_base()
@@ -53,7 +53,7 @@ class Neighbor(Base):
     neighbor_robot = relationship("Robot", foreign_keys=[neighbor])
 
 class StateChange(Base):
-    __tablename__ = "Statechange"
+    __tablename__ = "StateChange"
     
     change_id = Column(Integer, primary_key=True, index=True)
     state_id = Column(Integer, ForeignKey("State.state_id"))
