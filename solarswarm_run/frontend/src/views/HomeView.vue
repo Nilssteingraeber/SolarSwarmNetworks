@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import TopMenu from '@/components/topMenu/TopMenu.vue';
+import Timeline from '../components/Time/Timeline.vue';
 import Cesium from './Cesium.vue';
 import { MDBCol, MDBRow } from 'mdb-vue-ui-kit';
 import ConnectionMap from './ConnectionMap.vue';
@@ -11,14 +12,6 @@ const droneEntityStore = useDroneEntityStore()
 const droneHistoryStore = useDroneHistoryStore()
 const droneDataStore = useDroneDataStore()
 
-// const droneFetcher = new DroneFetcher({
-//   apiUrl: "",
-//   entityStore: droneEntityStore,
-//   historyStore: droneHistoryStore,
-//   dataStore: droneDataStore      // <-- REQUIRED
-// })
-
-// droneFetcher.start()
 </script>
 
 <template>
@@ -31,6 +24,7 @@ const droneDataStore = useDroneDataStore()
         <TopMenu />
       </MDBCol>
     </MDBRow>
+    <Timeline />
   </div>
 
 </template>

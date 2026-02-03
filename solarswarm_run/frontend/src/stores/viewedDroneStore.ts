@@ -4,6 +4,7 @@ import { useDroneHistoryStore } from '../DronesData/DroneHistoryStore'
 import type { Robot } from '../models/Robot'
 import { useTimeStore } from './TimeStore'
 import { useDroneEntityStore } from '../DronesData/DroneEntityStore'
+import { DronesPollingService } from '../DronesData/DronesPollingService'
 
 /**
  * Store for managing the currently viewed drone.
@@ -19,6 +20,8 @@ export const UseViewedDroneStore = defineStore('currentlyViewedDrone', () => {
 
     /** Currently viewed drone snapshot (latest fetched from history) */
     const viewedRobot: Ref<Robot | undefined> = ref(undefined)
+
+    const dronesPollingService: Ref<DronesPollingService> = ref(undefined)
 
     // ---------------------------
     // DEPENDENT STORES
@@ -55,8 +58,6 @@ export const UseViewedDroneStore = defineStore('currentlyViewedDrone', () => {
             timeStore.currentTime,
             15_000
         )
-
-        console.log(snapshot)
 
         useDroneEntityStore().drawFlightPath(viewedNid.value, useTimeStore().currentTime, 500)
         viewedRobot.value = snapshot ?? undefined
@@ -99,6 +100,9 @@ export const UseViewedDroneStore = defineStore('currentlyViewedDrone', () => {
         viewedRobot.value = undefined
     }
 
+    const setDronesPollingService = (s: DronesPollingService) => {
+        dronesPollingService.value = s
+    }
     // ---------------------------
     // RETURNED OBJECT
     // ---------------------------
@@ -106,6 +110,9 @@ export const UseViewedDroneStore = defineStore('currentlyViewedDrone', () => {
         // state
         viewedNid,
         viewedRobot,
+        dronesPollingService,
+
+        setDronesPollingService,
 
         // actions
         setDrone,
