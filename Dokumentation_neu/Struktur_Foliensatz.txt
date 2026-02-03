@@ -6,7 +6,7 @@
 - Text: Projekt am Institut für Elektromobilität and der Hochschule Bochum
 - Text: Erstellen eines Roboterschwarms, welcher dem Umweltschutz beiträgt
 - Text: Zusammenhängende Projektarbeiten verschiedener, interdisziplinärer Teams an Studierenden:
-- Liste: "Grobe Einteilung der Verantwortlichkeiten"
+- Liste: Grobe Einteilung der Verantwortlichkeiten
   - Informatik: Implementieren nötiger Software
   - Elektrotechnik: Bauen der Roboter
   - Nachhaltigkeit: Analyse der Energieeffizienz und Effektivität für den Umweltschutz
@@ -14,11 +14,10 @@
 # Unser Beitrag zu SolarSwarm
 - Text: Grundlage fürs Projekt
 - Liste:
-  - Schaffen eines ... Netzwerks
+  - Schaffen eines dynamischen, selbstheilenden Netzwerks für Roboter
   - Infrastruktur für Services und fürs Sammeln und Verarbeiten von Daten
   - Web-Applikation zur Visualisierung des Schwarms
   - Mock-Roboter zum Testen des Netzwerks und des Visualizers
-
 
 # Vorstellung des SolarSwarm Visualizers
 - Live Vorführung (inklusive Abdecken eines Roboters mit Alufolie für schlechtere Verbindung)
