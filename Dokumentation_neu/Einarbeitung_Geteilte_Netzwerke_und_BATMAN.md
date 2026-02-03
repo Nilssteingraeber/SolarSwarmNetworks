@@ -18,6 +18,7 @@ Referenz: https://www.7signal.com/ad-hoc-network
 7SIGNAL beschreibt verschiedene Arten von Ad-hoc-Netzwerken und ihre Anwendungsbereiche, von denen zwei für uns relevant sind:
 - Mobile Ad-hoc-Netzwerke (MANETs) seien Netzwerke, bei denen die Knoten mobil sind und sich frei bewegen können. Sie werden häufig in Militär- und Notfalleinsatzszenarien verwendet.
 - Drahtlose Sensornetzwerke (WSNs) seien Netzwerke aus räumlich verteilten Sensoren, die Umweltbedingungen überwachen und aufzeichnen und in Anwendungen wie Umweltüberwachung und industrieller Automatisierung eingesetzt werden.
+
 Referenz: https://www.7signal.com/ad-hoc-network
 
 Eine Studie aus dem Jahr 2016 vergleicht unter anderem Performanz, Anwendungen und Netzwerktopologien beider Arten. Die Forscher stellten fest, dass WSNs üblicherweise aus einer großen Anzahl an starren Sensoren oder Knoten bestehen. Sie haben eine zentrierte Topologie mit einem "Sink" als Sammelknoten der Daten. MANETs hingegen haben üblicherweise eine geringe Anzahl an mobilen Knoten. Sie haben eine dynamische, verteilte Topologie, die sich mit Bewegung der Knoten ändert. WSNs seien aufgrund ihrer starren Topologie bei längeren Anwendungen wie Umweltmessungen mit wenigen Veränderungen des Netzes in Anwendung. MANETs hingegen werden oft temporär errichtet. Notfälle und Militäroperationen werden als Beispiele benannt.
@@ -28,16 +29,19 @@ Zur Überwachung oder zum Sammeln von Daten in einer Datenbank könnte es für u
 
 ## Unterstützung überprüfen
 Ad-hoc lässt sich mit dem IBSS Modus umsetzen, welcher von der Netzwerkkarte der Roboter unterstützt werden muss. Speziell für ein MANET benötigen wir ein Mesh. Mit `lspci -v` oder `iw list` kann überprüft werden, ob diese Modi unterstützt werden, wobei letzterer entweder `mesh` oder `mesh point` heißen kann.
+
 Befehle aus: https://superuser.com/questions/1141862/setting-up-wireless-mesh-network-open-80211s-in-ubuntu
 
 `iw list` gibt unter "Supported interface modes" eine Liste aller unterstützten Modi aus. Die Netzwerkkarte des NUC unterstützt IBSS, managed, AP, AP/VLAN, monitor, P2P-client, P2P-GO und P2P-device, jedoch nicht den Mesh Modus. Dieser muss nicht unbedingt von der Netzwerkkarte selbst unterstützt werden. Anstatt sie zu ersetztn, genügt die Verwendung von USB-WLAN-Sticks, welche auch aufgrund der begrenzten Reichweite der NUCs zum Einsatz kommen könnten. Weiter stellte sich bei der Suche nach einem geeigneten Routing-Protokoll raus, dass verbreitete Protokolle auch mit dem IBSS Modus Mesh-Netzwerke errichten können.
 
 # Wahl eines Routing-Protokolls
 Für eine konkrete Umsetzung benötigen wir ein Routing-Protokoll, sodass sich Nodes gegenseitig finden und Pakete ihr Ziel erreichen. B.A.T.M.A.N. (advanced), Babel und OLSR gehören zu weit verbreiteten Protokollen. Sie sind typisch für MANETs, doch keins davon ist eindeutig optimal. Laut einem älteren Vergleich der Universidad Central de Venezuela habe die Forschung noch kein eindeutiges Optimum gefunden. Tests würden häufig unter optimalen Bedingungen indoor durchgeführt werden, weswegen auch eine eigene Testreihe unter Berücksichtigung verschiedener Bandbreiten von ihr gemacht wurde. Aus den Tests geht zwar hervor, dass es hinsichtlich Throughput und Verlust bei hoher Bandbreite bemerkbare Unterschiede zwischen den Protokollen gibt, jedoch können wir nicht allein augrunddessen eine Entscheidung treffen. Zum einen haben die verglichenen Protokolle seit 2013 Erweiterungen bekommen oder sich Anforderungen angepasst, zum anderen steht die Umsetzbarkeit unseres Projektes im Vordergrund.
+
 Referenz: https://ve.scielo.org/pdf/rfiucv/v28n1/art02.pdf
 
 Wir orientieren uns daher an Trends, Empfehlungen und Zugänglichkeit der Protokolle. Ein Trend lässt sich in der Freifunk Gemeinschaft erkennen, welche sich am Betreiben von unabhöngigen Mesh-Netzwerken beteiligen. In diesen sei OLSR lange Zeit das "Standardprotokoll", doch gebe es mittlerweile konkurrierende Alternativen. B.A.T.M.A.N. und Babel werden als Beispiele aufgeführt, wobei B.A.T.M.A.N. immer beliebter werde. freifunk.net hält eine besondere Stärke dessen fest:
 > Dieses kann flexibler mit den spontanen Veränderungen in Meshnetzwerken umgehen, denn die Information über die besten Verbindungen zwischen allen B.A.T.M.A.N.-Knoten ist auf das gesamte Netz verteilt.
+
 Referenz: https://freifunk.net/worum-geht-es/technik-der-community-netzwerke/
 
 B.A.T.M.A.N. oder sein Nachfahre B.A.T.M.A.N. advanced werden ebenfalls in Foren als auch von ChatGPT empfohlen. Es sei leicht einzurichten und benötige keine manuelle IP-Konfiguration. Im Weiteren basieren wir daher unser Netzwerk auf diesem Routing-Protokoll.
@@ -45,11 +49,13 @@ B.A.T.M.A.N. oder sein Nachfahre B.A.T.M.A.N. advanced werden ebenfalls in Foren
 # B.A.T.M.A.N. advanced (batman-adv)
 B.A.T.M.A.N. steht für "Better Approach to Mobile Ad-hoc Networking". In der Dokumentation zum Prinzip von BATMAN (zur Lesbarkeit ohne Punkte) wird vergleichend OLSR als "momentan meist eingesetzte Protokoll" für Drahtlose Ad-hoc-Netzwerke bezeichnet, welches trotz seiner Erweiterungen durch wachsende Netzwerke herausgefordert werde, da jeder sich Knoten bei Änderungen über einen neu zu berechnenden Graphen stets aller anderen Knoten bewusst sein muss. Hingegen seien sich BATMAN-Knoten (auch Originators genannt) nur ihrer Nachbarn bewusst.
 BATMAN zeichnet aus, dass das Netzwerk mit Originator Messages (OGMs) geflutet wird, wodurch Knoten einander ihre Existenz preisgeben. Durch diese Broadcasts erhalte ein Knoten mehrere OGMs desselben Ausgangsgnoten über seine Nachbarn und könne anhand ihrer Ankunftszeit und Verlässlichkeit den besten Hop-Nachbarn bestimmen. Das ist das Hauptprinzip von BATMAN und relevant, um sich der Möglichkeit der Aggregation von OGMs zur Reduzierung von Protokoll-Overhead und Vermeidung von Broadcast Loops.
+
 Referenz: https://www.open-mesh.org/projects/open-mesh/wiki/BATMANConcept
 
 BATMAN advanced verwendet MAC-Adressen auf der 2. Ebene des OSI-Modells, während seine Konkurrenten meist auf der 3. Ebene routen und Knoten durch IP-Adressen repräsentiert werden.
 Referenz: https://www.open-mesh.org/projects/batman-adv/wiki/Tweaking
 Es ist zu dem als Kernel-Modul implementiert worden, um im Kernel Modus effizienter Pakete zu verarbeiten, und verwendet Netzwerk Interfaces - konventionell mit batX (z.B. bat0) durchnummeriert. Inzwischen können Knoten mehrere Interfaces haben und an mehreren Meshes gleichzeitig teilnehmen, weswegen sie einander zugeordnet werden müssen. Wir benötigen nur ein Mesh.
+
 Genaueres zum Hinzufügen mehrerer: https://www.open-mesh.org/projects/batman-adv/wiki/Tweaking
 
 Aus dem konzeptuellen Design von BATMAN-adv ergeben sich einige Eigenschaften, von denen das BATMAN Team berichet:
@@ -59,11 +65,15 @@ Aus dem konzeptuellen Design von BATMAN-adv ergeben sich einige Eigenschaften, v
 > - roaming of non-mesh clients
 > - optimizing the data flow through the mesh (e.g. interface alternating, multicast, forward error correction, etc)
 > - running protocols relying on broadcast/multicast over the mesh and non-mesh clients (Windows neighborhood, mDNS, streaming, etc)
+
 Referenz: https://www.open-mesh.org/projects/batman-adv/wiki/Wiki
 
 Ein Mesh kann mit Gateways und nicht-Knoten Clients (sogenannten Nachbarn) interagieren und unterstützt Roaming. Gateways bieten die möglichkeit, dass das Netzwerk oder Clients mit der Außenwelt interagieren können. Da unsere Roboter aus Sicherheitsgründen keinen Internetzugriff haben werden, benötigen wir keine. Clients in unser Netzwerk einzubinden könnte zum Aufnehmen von Sensorddaten oder Überwachen des Netzwerks interessant sein. Die offizielle Dokumentation bietet Hilfen, um diese Features zu implementieren, zu verstehen und zu optimieren.
+
 Nicht-BATMAN-Knoten einbauen: https://www.open-mesh.org/projects/batman-adv/wiki/Quick-start-guide
+
 Funktionsweise: https://www.open-mesh.org/projects/batman-adv/wiki/Client-announcement
+
 Roaming optimieren: https://www.open-mesh.org/projects/batman-adv/wiki/Client-roaming
 
 Eine Übersicht der erweiterten Features von BATMAN advanced bietet eine Präsentation aus dem Jahr 2014: https://downloads.open-mesh.org/batman/papers/batman-adv_v_intro.pdf 
@@ -78,6 +88,7 @@ Wir werden uns nicht mit der Sicherheit dieses Protokolls beschäftigen. Auf bat
 
 ## Einrichtung
 Zu Beginn richten wir uns nach dem offiziellen Guide von Open Mesh. Falls nötig, nehmen wir weitere Konfigurationen vor und dokumentieren diese später.
+
 Zum Guide: https://www.open-mesh.org/projects/batman-adv/wiki/Quick-start-guide
 
 Sollte das im Guide verwendete WLAN-Interface `wlan0` nicht verfügbar sein, kann man sich mit `ip link` vorhandene Interfaces anzeigen lassen. Beim NIC heißt das WLAN-Interface `wlp0s20f3`. Das verwendete Tool `iw` muss zusätzlich installiert werden.
@@ -121,6 +132,7 @@ Erstellen eines bat0-Interfaces:
 `iwconfig` Befehle aus: https://wireless.docs.kernel.org/en/latest/en/users/documentation/iw/replace-iwconfig.html#join-an-ibss-ad-hoc-network
 
 WLAN im Terminal ein-/ausschalten mit `nmcli radio wifi on` bzw. `off`.
+
 Referenz: https://askubuntu.com/a/834194
 
 Installation und Aktivierung von `avahi-autoipd` für automatische IP Vergabe:
@@ -140,24 +152,31 @@ Zum Debuggen bietet `batctl` die Möglichkeit, Knoten anzupingen, Routing Loops 
 - Lists of none-mesh nodes connected to the network (clients or neighbors).
 - A list of available gateways in the network.
 - Log messages from the batman-adv module (if debug is compiled into the module).
+
 Referenz: https://www.open-mesh.org/projects/batman-adv/wiki/Using-batctl
 
-Mit `batctl` können wir sicherstellen, dass unser Netzwerk funktioniert und Knoten darin sichtbar sind. Das BATMAN Team bietet auch eine Troubleshooting Sektion mit häufig aufkommenden Problemen und Lösungen: https://www.open-mesh.org/projects/batman-adv/wiki/Troubleshooting
+Mit `batctl` können wir sicherstellen, dass unser Netzwerk funktioniert und Knoten darin sichtbar sind. Das BATMAN Team bietet auch eine Troubleshooting Sektion mit häufig aufkommenden 
+
+Problemen und Lösungen: https://www.open-mesh.org/projects/batman-adv/wiki/Troubleshooting
 
 ## Loops
 In der Netzwerktechnik betrachet man zwei Arten von Loops: Routing Loops (Schicht 3) und Bridge/Switch (Schicht 2) Loops. Beide beschreiben eine Situation, in der ein Paket immer wieder zwischen den selben Knoten verschickt wird und nie sein vorhergesehenes Ziel erreicht. Dieses Paket verbraucht Bandbreite solange es lebt und kann zu einer erheblicher Verlangsamung bis hin zu einem Stillstand einiger Knoten oder im schlimmsten Fall des ganzen Netzwerks führen. Die beiden Arten unterscheiden sich darin, wo und wie ein Loop entstehen kann.
 
 **Routing Loops** können durch Fehler im Routing-Table mehrerer Knoten entstehen. In der einfachsten Form kann ein Fehler entstehen, wenn beispielsweise zwei Knoten A und B mit einander und einem dritten Knoten C verbunden sind. A möchte C erreichen und weiß, dass die Route zu C über B günstiger ist und schickt ein Paket an B. Wenn C ausfällt und B nicht erfährt, dass A ebenfalls keine Verbindung zu C mehr hat, schickt B das Paket zu A zurück. Teilt B nun A nicht mit, dass er C nicht erreichen konnte, versucht A das Ziel C über B zu erreichen. Ein Loop entsteht. Weitere Pakete an C häufen sich an, sodass die gesamte Bandbreite zwischen A und B aufgebraucht werden kann. Bei größeren Netzwerken würden dazwischenliegende Knoten ebenfalls beeinträchtigt werden.
+
 Referenz: https://www.geeksforgeeks.org/what-is-routing-loop-and-how-to-avoid-routing-loop/
 
 **Bridge Loops** können durch redundante Wege zu einem einem Ziel entstehen. Zum einen können falsche Verkabelung oder Konfiguration dafür verantwortlich sein. Werden zwei Ports eines Switches mit einem Kabel oder zwei Switches (welche auch Bridges sind) redundant miteinander verbunden, könne ein solcher Loop zu "Broadcast Storms" führen. In einem Netzwerk mit mehreren Switches können Broadcast Storms auch durch Broadcasts über einfache Verbindungen angestoßen werden. Erhalte ein Switch ein an eine Broadcast oder Multicast MAC-Adresse gerichtetes Paket oder eine ihm unbekannte MAC-Adresse, flute er alle Ports außer den des Senders mit einem Broadcast. Wird über mehrere Switches ein Loop gebildet, broadcasten sie im Kreis. Während bei Routing Loops nur beteiligte Knoten belastet werden, erreichen die Broadcasts auch andere Knoten.   
+
 Referenz: https://www.catchpoint.com/network-admin-guide/switching-loops
 
 BATMAN advanced hat Loop Protection im Header jedes Payloads, welche beim Zwischenschalten einer Bridge jedoch verloren gehe. Vom Fall falscher Verkabelung abgesehen, ist die Entstehung von Loops ein logisches Problem. Beiträge im Internet empfehlen verschiedene Tools, um Netzwerktopologien zu analysieren und Loops zu entdecken, sowie Schutzmechanismen. catchpoint nennt das Spanning Tree Protocol (STP) den Standard, um Switch Loops zu verhindern. Üblicherweiser werde jeder Switch so konfiguriert, dieses Protokoll zu verwenden.
 BATMAN advanced implementiert aber seine eigene Lösung, da STP nicht über link qualities Bescheid wisse und sich nicht eigne. STP identifiziert redundante Wege über die Netzwerktopologie, welche sich jedoch bei einem Mesh-Netzwerk stetig ändern kann. Bridge Loop Avoidance lässt sich für eine bestehende `bridge` mit `batctl bl 1` aktivieren.
+
 Referenzen: https://www.open-mesh.org/projects/batman-adv/wiki/Bridge-loop-avoidance
 
 BATMAN's Bridge Loop Avoidance funktioniert ebenfalls über einen Header und sieht vor, dass Clients am Mesh von sogenannte Backbone Gateways für sich beansprucht werden. Diese meinen Mesh-Knoten, die ebenfalls mit einem LAN verbunden sind. Jeder Client kann nur von einem Backbone Gateway beansprucht werden, welcher sich für ihre Broadcasts vorantwortlicht.
+
 Genauere Informationen zum Konzept und eine Versuchsreihe: https://www.open-mesh.org/projects/batman-adv/wiki/Bridge-loop-avoidance-II
 
 ## Erste Labortests zu batman-adv
@@ -183,6 +202,7 @@ Kein Fehler aber Hinweis für die MTU:
 ```
 
 Die Dokumentation des Kernel-Moduls bietet Anweisungen, um batman-adv zu konfigurieren, aber es gelang nicht, die angegebenen Schritte zu reproduzieren.
+
 Kernel-Modul: https://www.kernel.org/doc/Documentation/networking/batman-adv.txt
 
 Hilfen und Diskussionen im Internet wiesen häufig auf die offizielle Dokumentation zurück oder bezogen sich auf andere Systeme oder Router-Setups mit der Linux-Distribution OpenWRT. Insgesamt ließ sich nach geraumer Zeit keine auf unser Problem angepasste Lösung finden.
