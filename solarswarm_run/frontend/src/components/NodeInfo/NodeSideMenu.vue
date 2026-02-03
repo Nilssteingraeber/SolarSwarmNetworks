@@ -4,20 +4,23 @@ import NodePowerOffButton from './NodePowerOffButton.vue';
 import { OhVueIcon } from 'oh-vue-icons';
 import Node3DTransform from './Node3DTransform.vue';
 import NodeCPUGraph from './NodeCPUGraph.vue';
-import { computed, toRaw } from 'vue';
+import { computed, ref, Ref, toRaw, watch } from 'vue';
 import ServicesGraph from './Services/ServicesGraph.vue';
 import Toggle from '../controlSurfaces/Toggle.vue';
 import { UseViewedDroneStore } from '../../stores/viewedDroneStore';
 import { storeToRefs } from 'pinia';
 import { useDroneEntityStore } from '../../DronesData/DroneEntityStore';
 import { useTimeStore } from '../../stores/TimeStore';
+import { DronesPollingService } from '../../DronesData/DronesPollingService';
+import { useServiceInterfaceStore } from '../../stores/ServiceInterfaceStore';
+import { NamedParsedInterface } from '../../DronesData/NodeRosInterfaces';
 
 
 const droneStore = useDroneEntityStore()
 const viewedDroneStore = UseViewedDroneStore()
 const { currentTime } = useTimeStore()
 const { viewer } = storeToRefs(droneStore)
-const { viewedRobot } = storeToRefs(viewedDroneStore)
+const { viewedRobot, viewedNid, dronesPollingService } = storeToRefs(viewedDroneStore)
 
 
 const batteryIconNames = ["fa-battery-empty", "fa-battery-quarter", "fa-battery-half", "fa-battery-three-quarters", "fa-battery-full"]
@@ -25,7 +28,6 @@ const batteryIconColors = ["", "red", "yellow", "green", "green"]
 
 const wifiIconNames = ["bi-wifi", "bi-wifi-2", "bi-wifi-1", "bi-wifi-off"]
 const wifiIconColors = ["green", "yellow", "orange", "red"]
-
 
 
 const wifiLevelStatus = computed(() => {
@@ -91,6 +93,7 @@ const currentBatteryStatus = computed(() => {
 
 
 const batteryLevelText = computed(() => {
+    console.log(viewedRobot.value?.point?.lat)
     if (viewedRobot?.value?.battery && viewedRobot?.value?.battery.toString() === "-1") {
         return "?"
     }
@@ -105,10 +108,49 @@ const closeMenu = () => {
         viewer.value.trackedEntity = undefined;
 }
 
+const servicesList: Ref<Object | undefined> = ref(undefined)
+
+const interfaceStore = useServiceInterfaceStore()
+const servicesRef = ref<NamedParsedInterface[] | undefined>(undefined)
+const servicesLoading = ref(false)
+
+watch(
+    viewedNid,
+    async (newNid, oldNid) => {
+        if (!newNid) {
+            servicesRef.value = undefined
+            return
+        }
+
+        const cached = interfaceStore.get(newNid).value
+        const hasValidCache = interfaceStore.has(newNid).value
+
+        if (cached && hasValidCache) {
+            servicesRef.value = cached
+            servicesLoading.value = false
+            return
+        }
+
+        servicesLoading.value = true
+        try {
+            const data = await dronesPollingService.value.fetchServicesList(newNid)
+            interfaceStore.set(newNid, data)
+            servicesRef.value = data
+        } catch (err) {
+            console.error('Failed to fetch services', err)
+            servicesRef.value = undefined
+        } finally {
+            servicesLoading.value = false
+        }
+    },
+    { immediate: true }
+)
+
+
 </script>
 
 <template>
-    <MDBRow class="menu side-menu-root justify-content-end" :class="{ 'menu-closed': !isOpen }">
+    <MDBRow class="menu side-menu-root justify-content-end h-100" :class="{ 'menu-closed': !isOpen }">
         <MDBCol class="col-auto text-center h-100 d-flex flex-column">
             <!-- Header row (fixed at top of menu) -->
             <MDBRow class="flex justify-content-between align-items-center header-row">
@@ -120,8 +162,8 @@ const closeMenu = () => {
             </MDBRow>
 
             <!-- Scrollable content -->
-            <MDBRow class="menu-content flex-grow-1 overflow-auto custom-scroll">
-                <MDBCol>
+            <MDBRow class="custom-scroll">
+                <MDBCol class="">
                     <!-- Battery -->
                     <MDBRow class="p-2">
                         <MDBCol class="col-auto">
@@ -223,7 +265,8 @@ const closeMenu = () => {
                                     <MDBRow>
                                         <MDBCol class="d-flex flex-nowrap justify-content-between">
                                             <p class="mb-0 math-text">Lat</p>
-                                            <p class="mb-0 font-mono">{{ (viewedRobot?.point?.lat ?? 0).toFixed(7) }}
+                                            <p class="mb-0 font-mono">{{ (viewedRobot?.point?.lat ??
+                                                viewedRobot?.point?.x ?? 0).toFixed(7) }}
                                             </p>
                                         </MDBCol>
                                     </MDBRow>
@@ -232,7 +275,8 @@ const closeMenu = () => {
                                     <MDBRow class="mb-1">
                                         <MDBCol class="d-flex flex-nowrap justify-content-between">
                                             <p class="mb-0 math-text">Lon</p>
-                                            <p class="mb-0 font-mono">{{ (viewedRobot?.point?.lon ?? 0).toFixed(7) }}
+                                            <p class="mb-0 font-mono">{{ (viewedRobot?.point?.lon ??
+                                                viewedRobot?.point?.y ?? 0).toFixed(7) }}
                                             </p>
                                         </MDBCol>
                                     </MDBRow>
@@ -241,7 +285,8 @@ const closeMenu = () => {
                                     <MDBRow>
                                         <MDBCol class="d-flex flex-nowrap justify-content-between">
                                             <p class="mb-0 math-text">Alt</p>
-                                            <p class="mb-0 font-mono">{{ (viewedRobot?.point?.alt ?? 0).toFixed(2) +
+                                            <p class="mb-0 font-mono">{{ (viewedRobot?.point?.alt ??
+                                                viewedRobot?.point?.z ?? 0).toFixed(2) +
                                                 " m" }}
                                             </p>
                                         </MDBCol>
@@ -298,8 +343,17 @@ const closeMenu = () => {
                         </MDBCol>
                     </MDBRow>
 
+                    <MDBRow class="justify-content-center mb-2">
+                        <MDBCol class="col-12">
+                            <div class="m-2"></div>
+                        </MDBCol>
+                        <MDBCol class="col-12 sub_title">
+                            Services
+                        </MDBCol>
+                    </MDBRow>
 
-                    <MDBRow class="justify-content-between p-2 h-100">
+
+                    <MDBRow class="justify-content-between p-2 mb-3">
                         <MDBCol>
                             <ServicesGraph></ServicesGraph>
                         </MDBCol>
@@ -346,8 +400,8 @@ const closeMenu = () => {
 .side-menu-root {
     pointer-events: none;
     z-index: 5000;
-    height: calc(100vh - 65px);
     overflow-y: visible;
+    max-height: calc(100vh - 65px);
 }
 
 .side-menu-root * {
@@ -496,6 +550,17 @@ const closeMenu = () => {
     text-shadow: 0 1px 2px rgba(255, 255, 255, 0.3), 0 0 8px rgba(255, 255, 255, 0.5);
 }
 
+.sub_title {
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+    font-size: large;
+
+    background: rgba(0, 0, 0, 1.0);
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.3), 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
 .sticky {
     position: sticky;
     /* makes it sticky */
@@ -515,7 +580,7 @@ const closeMenu = () => {
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.5);
     box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
-    backdrop-filter: blur(8px) saturate(300%);
+    backdrop-filter: blur(16px) saturate(150%);
     -webkit-backdrop-filter: blur(1px) saturate(150%);
     /* Fill the container */
     overflow-y: hidden;

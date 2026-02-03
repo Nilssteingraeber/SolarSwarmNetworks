@@ -6,7 +6,8 @@ import { defineProps, defineEmits, ref, watch, onMounted, nextTick } from 'vue';
 const props = defineProps<{
     modelValue: string | null,
     returnInstance: Service,
-    isOutput: boolean
+    isOutput: boolean,
+    readOnly?: boolean // <-- added
 }>();
 
 const emit = defineEmits<{
@@ -48,13 +49,12 @@ const autoResize = () => {
         textarea.style.height = textarea.scrollHeight + 'px';
     }
 };
-
 </script>
 
 <template>
     <div class="m-2" ref="textareaRef">
-        <MDBTextarea type="textarea" v-model="inputValue" class="rounded resizable-input" :disabled="isOutput" rows="1"
-            @input="autoResize" />
+        <MDBTextarea type="textarea" v-model="inputValue" class="rounded resizable-input"
+            :disabled="isOutput || readOnly" rows="1" @input="autoResize" />
     </div>
 </template>
 

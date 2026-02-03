@@ -116,8 +116,8 @@ onMounted(() => {
     // @ts-expect-error
     viewer = new Cesium.Viewer(cesiumContainer.value, {
         baseLayerPicker: false,
-        timeline: true,
-        animation: true,
+        timeline: false,
+        animation: false,
         homeButton: false,
         vrButton: false,
         navigationHelpButton: false,
@@ -129,7 +129,6 @@ onMounted(() => {
         geocoder: false,
     })
 
-    // @ts-expect-error
     Cesium.CesiumTerrainProvider.fromUrl(`http://localhost:${import.meta.env.VITE_DEM_SERVER_PORT}/`)
         .then((prov) => { viewer!.scene.terrainProvider = prov })
 
@@ -137,7 +136,6 @@ onMounted(() => {
     viewer.scene.debugShowFramesPerSecond = true
 
     const osmImageryProvider = new Cesium.OpenStreetMapImageryProvider({
-        // @ts-expect-error
         url: `http://localhost:${import.meta.env.VITE_OSM_SERVER_PORT}/styles/basic/512/`,
     })
     viewer.imageryLayers.removeAll()
@@ -155,15 +153,14 @@ onMounted(() => {
 
     simulator = new DroneSimulatorBackend(3)
     const pollingService = new DronesPollingService({
-        // @ts-expect-error
         baseUrl: "http://localhost:8000",
         addRobotsBatch: useDroneHistoryStore().addRobotsBatch,
         intervalMs: 1000,
-        // @ts-expect-error
         useSimulator: false,
         droneSimulatorBackend: simulator
     })
     pollingService.start()
+    UseViewedDroneStore().setDronesPollingService(pollingService)
 
     simTickInterval = window.setInterval(() => {
         if (simulator) {
@@ -174,12 +171,11 @@ onMounted(() => {
     syncInterval = window.setInterval(() => {
         useTimeStore().setTime(Cesium.JulianDate.toDate(viewer!.clock.currentTime).getTime())
         UseViewedDroneStore().updateViewedRobot().then(() => droneEntityStore.syncEntitiesFromHistory())
-    }, 1000)
+    }, 500)
 
     // ---------------------------
     // Load 3D Tileset
     // ---------------------------
-    // @ts-expect-error
     Cesium.Cesium3DTileset.fromUrl(`http://localhost:${import.meta.env.VITE_MESH_3D_SERVER_PORT}/tileset.json`, {
         dynamicScreenSpaceError: true,
         dynamicScreenSpaceErrorDensity: 0.00278,
@@ -203,7 +199,6 @@ onMounted(() => {
         viewer!.clock.startTime = startTime
         viewer!.clock.stopTime = stopTime
         viewer!.clock.currentTime = now
-        viewer!.timeline.zoomTo(startTime, stopTime)
 
         // Initial Camera View
         const centerNRW = Cesium.Cartesian3.fromDegrees(7.5, 51.433, 81000)

@@ -28,6 +28,9 @@ export interface Robot {
         lon: number;
         lat: number;
         alt?: number;
+        x: number;
+        y: number;
+        z?: number;
     } | Record<string, any>;
 
     orientation?: {

@@ -200,7 +200,7 @@ services:
       - ./backend/backend/file_server/osm/tileserver:/tileserver
     ports:
       - "9015:9015"
-    command: ["-c", "/tileserver/config.json", "-p", "9015"]
+    command: ["-c", "/tileserver/config.json", "-p", "9015", "--silent"]
     networks:
       - internal
 

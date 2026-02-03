@@ -7,17 +7,12 @@ import {
     Cartesian2,
     defined,
     ScreenSpaceEventType,
-    Entity as CesiumEntity,
-    Entity
+    HeadingPitchRange
 } from 'cesium'
 
 import {
     MDBRow,
-    MDBCol,
-    MDBDropdown,
-    MDBDropdownToggle,
-    MDBDropdownMenu,
-    MDBDropdownItem
+    MDBCol
 } from 'mdb-vue-ui-kit'
 import { OhVueIcon } from 'oh-vue-icons'
 
@@ -27,238 +22,145 @@ import GeoEditingMainMenu from '../GeoEditing/GeoEditingMainMenu.vue'
 import { useDroneEntityStore } from '../../DronesData/DroneEntityStore'
 import { useGeoToolsStore } from '../../stores/GeoToolsStore'
 import { UseViewedDroneStore } from '../../stores/viewedDroneStore'
-import type { Robot, RobotWithEntity } from '../../models/Robot'
-import { useDroneDataStore } from '../../DronesData/DroneDataStore'
+import type { RobotWithEntity } from '../../models/Robot'
 import { useSettingsStore } from '../../stores/SettingsStore'
 import { useDroneHistoryStore } from '../../DronesData/DroneHistoryStore'
 import { useTimeStore } from '../../stores/TimeStore'
+import { degToRad } from 'three/src/math/MathUtils'
 
-// === Stores & refs ===
+// === Stores ===
 const viewedDroneStore = UseViewedDroneStore()
 const { viewedRobot } = storeToRefs(viewedDroneStore)
 
-const droneDataStore = useDroneDataStore()
-
 const droneEntityStore = useDroneEntityStore()
-const { viewer } = storeToRefs(droneEntityStore) // viewer is Ref<Viewer | null>
+const { viewer } = storeToRefs(droneEntityStore)
 
 const geoStore = useGeoToolsStore()
 const { isOpen: isGeoToolsOpen } = storeToRefs(geoStore)
 
-// Local UI state
-const showDroneList = ref(false)
-// State to track if the user is focused on the top or bottom
-const isScrolledDown = ref(false)
+const droneHistoryStore = useDroneHistoryStore()
+const settingsStore = useSettingsStore()
 
-// Derived state — true if *any* menu should be open
+// === UI state ===
+const showDroneList = ref(false)
+const isScrolledDown = ref(false)
+const searchQuery = ref('')
+
+// === Derived state ===
 const isAnyMenuOpen = computed(() => viewedRobot?.value || isGeoToolsOpen.value)
 const isNodeMenuOpen = computed(() => viewedRobot?.value)
 
-// Computed list of all drones with IDs and names
-const allDrones = computed(() => {
-    // Matches the shape returned by your entity store: { robot, entity }
+const allDrones = computed(() => droneEntityStore.getRobots ?? [])
 
-    return droneEntityStore.getRobots ?? []
+const filteredDrones = computed(() => {
+    const q = searchQuery.value.trim().toLowerCase()
+    if (!q) return allDrones.value
+
+    return allDrones.value.filter(d =>
+        d.robot.display_name?.toLowerCase().includes(q) ||
+        d.robot.nid.toLowerCase().includes(q)
+    )
 })
 
-// Add after your other refs
-const droneHistoryStore = useDroneHistoryStore()
+const dronesAmount = computed(() => droneHistoryStore.activeRobotCount)
 
-// Auto-refresh dronesAmount every 5s
-let countInterval: number | undefined
-onMounted(() => {
-    countInterval = window.setInterval(() => {
-        droneHistoryStore.activeRobotCount // Triggers cache refresh + recompute
-    }, 5000)
-})
+const mapIconName = computed(() =>
+    settingsStore.getShow3dMesh() ? 'ri-map-2-fill' : 'ri-map-2-line'
+)
 
-onUnmounted(() => {
-    if (countInterval) {
-        window.clearInterval(countInterval)
-    }
-})
-
-// Update computed to force cache refresh
-const dronesAmount = computed(() => {
-    return droneHistoryStore.activeRobotCount
-})
-
-
-const settingsStore = useSettingsStore();
-
-// Close all menus
-const closeAllMenus = () => {
-    geoStore.setOpen(false)
-    viewedDroneStore.setDrone(null)
-    showDroneList.value = false
-}
-
-const mapIconName = computed(() => {
-    return settingsStore.getShow3dMesh() ? "ri-map-2-fill" : "ri-map-2-line"
-})
-const toggleShow3dmesh = () => {
+// === Actions ===
+const toggleShow3dmesh = () =>
     settingsStore.setShow3dMesh(!settingsStore.getShow3dMesh())
-}
 
-// Open geo tools, close drone info
 const toggleOpenGeoTools = () => {
     geoStore.toggleOpen()
     if (geoStore.isOpen) {
         viewedDroneStore.setDrone(null)
-        useDroneEntityStore().removeFlightPathLines(viewedDroneStore.viewedNid ?? "")
+        droneEntityStore.removeFlightPathLines(viewedDroneStore.viewedNid ?? '')
     }
     showDroneList.value = false
 }
 
-/**
- * Focus / fly to a drone by nid
- */
 const focusDrone = (nid: string) => {
     showDroneList.value = false
+    searchQuery.value = ''
 
     const v = viewer.value
     if (!v) return
-    const droneWithEntity = droneEntityStore.getRobot(nid) as RobotWithEntity | undefined
-    if (!droneWithEntity || !droneWithEntity.entity) return
 
-    useDroneEntityStore().removeFlightPathLines(viewedDroneStore.viewedNid ?? "")
+    const drone = droneEntityStore.getRobot(nid) as RobotWithEntity | undefined
+    if (!drone?.entity) return
+
+    droneEntityStore.removeFlightPathLines(viewedDroneStore.viewedNid ?? '')
     viewedDroneStore.setDrone(null, nid)
     geoStore.setOpen(false)
 
     droneEntityStore.drawFlightPath(nid, useTimeStore().currentTime, 500)
 
-    v.flyTo(droneWithEntity.entity, { duration: 0.85 }).then(() => {
-        v.trackedEntity = toRaw(droneWithEntity.entity)
-    }).catch((e) => {
-        console.log("error")
+    // --- Fly to drone with controlled zoom + north-facing orientation ---
+    v.flyTo(drone.entity, {
+        duration: 0.35,
+        offset: new HeadingPitchRange(
+            0,                              // heading = north
+            degToRad(-35),     // look down
+            120                             // distance in meters (tweak this)
+        )
+    }).then(() => {
+        // Enable tracking
+        v.trackedEntity = toRaw(drone.entity)
+
+        // --- Force camera back to north (tracking overrides orientation) ---
+        const pos = drone?.entity?.position?.getValue(v.clock.currentTime)
+        if (!pos) return
+
+        v.camera.setView({
+            destination: v.camera.position,
+            orientation: {
+                heading: 0,                               // north
+                pitch: v.camera.pitch,
+                roll: 0
+            }
+        })
     })
 }
 
-/**
- * Toggles the main viewport scroll between the top and bottom of the page.
- */
+
 const toggleMapFocus = () => {
-    // Use document.documentElement for standard compatibility, fall back to document.body
-    const targetElement = document.documentElement || document.body
-
-    // Check current scroll position
-    const currentScroll = targetElement.scrollTop || document.body.scrollTop
-    const maxScroll = targetElement.scrollHeight - targetElement.clientHeight
-
-    // Determine target position: 0 (top) or maxScroll (bottom)
-    // We toggle based on whether the user is currently at the top or bottom (with a small tolerance)
-    let targetScroll = 0
-
-    // If we are close to the top, scroll to the bottom (maxScroll)
-    if (currentScroll < 10) {
-        targetScroll = maxScroll
-        isScrolledDown.value = true
-    } else {
-        // Otherwise, scroll back to the top (0)
-        targetScroll = 0
-        isScrolledDown.value = false
-    }
-
-    // Scroll smoothly
-    window.scrollTo({
-        top: targetScroll,
-        behavior: 'smooth'
-    })
+    const target = document.documentElement
+    const current = target.scrollTop
+    const max = target.scrollHeight - target.clientHeight
+    isScrolledDown.value = current < 10
+    window.scrollTo({ top: isScrolledDown.value ? max : 0, behavior: 'smooth' })
 }
 
-/* --------------------------
-    Screen-space selection
-    -------------------------- */
-
+// === Cesium selection ===
 let handler: ScreenSpaceEventHandler | null = null
 
-/**
- * Create the ScreenSpaceEventHandler on a viewer and wire double-click to focusDrone.
- * Ensures we clean up previous handler if present.
- */
 function attachDroneSelector(v: Viewer) {
-    // remove previous handler if any
     detachDroneSelector()
-
-    // create only when scene.canvas exists
-    if (!v.scene || !v.scene.canvas) return
+    if (!v.scene?.canvas) return
 
     handler = new ScreenSpaceEventHandler(v.scene.canvas)
-
     handler.setInputAction((click: { position: Cartesian2 }) => {
-        try {
-            const picked = v.scene.pick(click.position)
+        const picked = v.scene.pick(click.position)
+        if (!defined(picked)) return
 
-            // picked might be undefined, a Primitive, an Entity, or a geometry object
-            if (!defined(picked)) return
-
-            const pickedId = (picked as any).id ?? (picked as any).primitive?.id
-
-            if (!pickedId) return
-
-            // If pickedId is a Cesium Entity (has properties), check isSelectable
-            // also guard if properties.isSelectable is a ConstantProperty or plain boolean
-            const isSelectableProp = pickedId.properties?.isSelectable
-            let selectable = false
-            if (typeof isSelectableProp === 'object' && isSelectableProp?.getValue) {
-                selectable = !!isSelectableProp.getValue()
-            } else {
-                selectable = !!isSelectableProp
-            }
-
-            if (!selectable) return
-
-            // droneData may be a ConstantProperty or object; attempt to read nid safely
-            const droneDataProp = pickedId.properties?.droneData
-            let nid: string | undefined = undefined
-
-            if (droneDataProp && typeof droneDataProp.getValue === 'function') {
-                const value = droneDataProp.getValue()
-                nid = value?.nid
-            } else if (pickedId.properties?.droneData) {
-                nid = pickedId.properties.droneData?.nid
-            }
-
-            if (nid) focusDrone(nid)
-        } catch (e) {
-            // swallow pick errors to avoid noisy exceptions from Cesium internals
-            // console.debug('pick error', e)
-        }
+        const id = (picked as any).id ?? (picked as any).primitive?.id
+        const prop = id?.properties?.droneData
+        const nid = prop?.getValue?.()?.nid ?? prop?.nid
+        if (nid) focusDrone(nid)
     }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK)
 }
 
 function detachDroneSelector() {
-    if (handler) {
-        try {
-            handler.destroy()
-        } catch {
-            // ignore
-        }
-        handler = null
-    }
+    handler?.destroy()
+    handler = null
 }
 
-// watch viewer ref and attach/detach handler
-watch(
-    viewer,
-    (newViewer, oldViewer) => {
-        if (newViewer) {
-            attachDroneSelector(newViewer)
-        } else {
-            detachDroneSelector()
-        }
-    },
-    { immediate: true }
-)
-
-// cleanup on unmount
-onUnmounted(() => {
-    detachDroneSelector()
-    // ensure tracked entity cleared? optional:
-    // if (viewer.value) viewer.value.trackedEntity = undefined
-})
-
+watch(viewer, v => v ? attachDroneSelector(v) : detachDroneSelector(), { immediate: true })
+onUnmounted(detachDroneSelector)
 </script>
+
 
 <template>
     <MDBRow class="menu-root non-clickable">
@@ -268,57 +170,68 @@ onUnmounted(() => {
                     <div class="title">Solar Swarm</div>
                 </MDBCol>
 
-                <MDBCol class="col-auto menu mx-3 d-flex align-items-center clickable">
-                    <div class="input-group">
-                        <div class="form-outline search-outline-fix">
-                            <input type="text" id="searchForm" class="form-control text-input-layer" />
+                <MDBCol class="col-auto menu mx-3 d-flex flex-column align-items-center clickable">
+                    <MDBRow class="my-2 w-100">
+                        <div class="input-group px-0">
+                            <div class="form-outline search-outline-fix">
+                                <input type="text" id="searchForm" class="form-control text-input-layer h-100"
+                                    v-model="searchQuery" placeholder="Search drones…" @focus="showDroneList = true"
+                                    @focusout="showDroneList = false" />
+                            </div>
+                            <button type="button" class="btn btn-primary search-button-fix me-2">
+                                <OhVueIcon name="bi-search" scale="1" class="icon" />
+                            </button>
+                            <button type="button"
+                                class="icon-button d-flex align-items-center p-0 dropdown-list cursor-pointer"
+                                @click="showDroneList = !showDroneList">
+                                <div class="p-2 title_small">{{ dronesAmount }}</div>
+                                <OhVueIcon name="la-robot-solid" scale="1.5" class="icon icon-button p-1" />
+                                <OhVueIcon :name="showDroneList ? 'bi-caret-down-fill' : 'bi-caret-up-fill'" scale="1"
+                                    class="icon icon-button ps-0 pe-2" />
+
+                            </button>
                         </div>
-                        <button type="button" class="btn btn-primary search-button-fix">
-                            <OhVueIcon name="bi-search" scale="1" class="icon" />
-                        </button>
-                    </div>
+                    </MDBRow>
+
+                    <transition name="expand-fade">
+                        <MDBRow class="w-100 px-0" v-if="showDroneList">
+                            <MDBCol class="drone-list px-2">
+                                <MDBRow v-for="d in [...filteredDrones]" :key="d.robot.nid"
+                                    @click="focusDrone(d.robot.nid)"
+                                    class="p-1 px-0 cursor-pointer drone-entry d-flex align-items-center input-layer my-2">
+                                    <MDBCol class="col-auto px-0">
+                                        <OhVueIcon name="la-robot-solid" scale="1"
+                                            class="icon p-1 ps-2 d-flex align-items-center" />
+                                    </MDBCol>
+
+                                    <MDBCol>
+                                        <span class="drone-name">
+                                            {{ d.robot.display_name ?? d.robot.nid }}
+                                        </span>
+                                    </MDBCol>
+                                </MDBRow>
+
+                            </MDBCol>
+                        </MDBRow>
+                    </transition>
                 </MDBCol>
 
-                <MDBCol class="col-auto menu mx-3 d-flex align-items-center clickable robot-dropdown">
-                    <MDBDropdown v-model="showDroneList" popperClass="non-clickable noRipple">
-                        <MDBDropdownToggle tag="div" class="d-flex align-items-center p-0"
-                            @click="showDroneList = !showDroneList">
-                            <div class="p-2 title_small">{{ dronesAmount }}</div>
-                            <OhVueIcon name="la-robot-solid" scale="1.5" class="icon p-1" />
-                        </MDBDropdownToggle>
-
-                        <MDBDropdownMenu :class="{ 'd-block': showDroneList }" class="dropdown-menu-list">
-                            <MDBDropdownItem v-for="drone in allDrones" :key="drone.robot.nid">
-                                <p class="cursor-pointer" @click="focusDrone(drone.robot.nid)">
-                                    🤖 {{ drone.robot.display_name || `Drone ${drone.robot.nid}` }}
-                                </p>
-                            </MDBDropdownItem>
-
-                            <MDBDropdownItem v-if="dronesAmount === 0" disabled>
-                                No active drones
-                            </MDBDropdownItem>
-                        </MDBDropdownMenu>
-                    </MDBDropdown>
-                </MDBCol>
-
-
-                <MDBCol class="col-auto menu mx-3 d-flex align-items-center clickable">
+                <MDBCol class="col-auto menu mx-3 p-1 d-flex align-items-center clickable">
                     <button type="button" class="icon-button" @click="toggleMapFocus">
                         <OhVueIcon :name="isScrolledDown ? 'bi-chevron-double-up' : 'bi-chevron-double-down'"
                             scale="1.5" class="icon" />
                     </button>
                 </MDBCol>
 
-                <MDBCol class="col-auto menu mx-3 d-flex align-items-center clickable">
+                <MDBCol class="col-auto menu mx-3 p-1 d-flex align-items-center clickable">
                     <button type="button" class="icon-button d-flex align-items-center gap-2"
                         @click="toggleOpenGeoTools">
                         <OhVueIcon name="ri-tools-line" scale="1.33" class="icon" />
                     </button>
                 </MDBCol>
 
-                <MDBCol class="col-auto menu mx-3 d-flex align-items-center clickable">
+                <MDBCol class="col-auto menu mx-3 p-1 d-flex align-items-center clickable">
                     <button type="button" class="icon-button d-flex align-items-center gap-2" @click="toggleShow3dmesh">
-
                         <OhVueIcon :name="mapIconName" scale="1.33" class="icon" />
                     </button>
                 </MDBCol>
@@ -332,9 +245,6 @@ onUnmounted(() => {
                     key="side-content" />
             </transition>
         </MDBCol>
-
-
-
     </MDBRow>
 </template>
 
@@ -369,7 +279,8 @@ onUnmounted(() => {
     transition: max-width 0.3s ease, opacity 0.3s ease, height 0.3s ease;
     overflow: hidden;
     opacity: 0;
-    height: fit-content;
+    border-radius: 12px;
+    height: calc(100vh - 140px);
 }
 
 .side-menu.open {
@@ -415,6 +326,8 @@ onUnmounted(() => {
 
 .search-button-fix {
     margin-right: -2px;
+    border-top-right-radius: 8px !important;
+    border-bottom-right-radius: 8px !important;
 }
 
 .search-outline-fix {
@@ -474,13 +387,14 @@ onUnmounted(() => {
 }
 
 .menu {
-    background: rgba(255, 255, 255, 0.54);
+    background: rgba(255, 255, 255, 0.65);
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.5);
     box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
-    backdrop-filter: blur(8px) saturate(150%);
-    -webkit-backdrop-filter: blur(8px) saturate(150%);
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
     z-index: 1000;
+    height: min-content;
 }
 
 /* Anchor the dropdown to the robot-count button */
@@ -513,5 +427,59 @@ onUnmounted(() => {
 .MDBDropdownToggle {
     display: flex;
     align-items: center !important;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.hover\:bg-gray-100:hover {
+    background-color: #f2f2f2;
+}
+
+.expand-fade-enter-active,
+.expand-fade-leave-active {
+    transition: all 0.25s ease;
+}
+
+.expand-fade-enter-from,
+.expand-fade-leave-to {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+}
+
+.expand-fade-enter-to,
+.expand-fade-leave-from {
+    max-height: calc(100vh - 80px);
+    opacity: 1;
+}
+
+.input-layer {
+    background-color: rgba(255, 255, 255, 0.350);
+    border-radius: 8px;
+    border: 1px rgba(126, 126, 126, 0.178) solid;
+}
+
+/* Base color for text + icon */
+.drone-entry {
+    color: rgba(41, 41, 41, 0.955);
+    transition: color 0.25s ease, background-color 0.25s ease;
+}
+
+/* Make icons inherit text color */
+.drone-entry .icon {
+    color: inherit;
+}
+
+/* Hover state = EVERYTHING turns blue */
+.drone-entry:hover {
+    border-color: #399cff;
+    background-color: rgba(25, 118, 210, 0.06);
+}
+
+/* Optional: subtle hover polish */
+.drone-entry:hover .drone-name {
+    text-decoration: none;
 }
 </style>
