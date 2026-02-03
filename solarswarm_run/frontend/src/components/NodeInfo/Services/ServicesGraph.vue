@@ -3,11 +3,10 @@ import { onMounted, ref } from 'vue'
 import { Chart, LineController, LineElement, PointElement, LinearScale, Title, CategoryScale } from 'chart.js'
 import { MDBCol, MDBRow } from 'mdb-vue-ui-kit'
 import ServiceFactory from './ServiceFactory.vue';
-import { MockServices } from '@/mock/MockServices';
 </script>
 
 <template>
-    <ServiceFactory :services="MockServices" />
+    <ServiceFactory />
 </template>
 
 <style scoped>

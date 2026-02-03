@@ -17,6 +17,8 @@ from custom_interfaces.msg import RobotQuaternion
 from custom_interfaces.msg import RobotMisc
 from custom_interfaces.msg import NeighborList
 
+from custom_interfaces.srv import StrToLowerUpperService
+
 from typing import Set
 from datetime import datetime
 from numpy import array
@@ -42,7 +44,7 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
 
         # declare parameters
         self.declare_parameter('system_intervall', 3.0, ParameterDescriptor(description='Time it takes for battery, cpu, and activity to be published again.'))
-        self.declare_parameter('geo_intervall', 3.0, ParameterDescriptor(description='Time it takes for point and orientation to be published again.'))
+        self.declare_parameter('geo_intervall', 1.0, ParameterDescriptor(description='Time it takes for point and orientation to be published again.'))
         self.declare_parameter('misc_intervall', 20.0, ParameterDescriptor(description='Time it takes for a json string to be published again.'))
         self.get_logger().debug('Parameters declared')
         
@@ -66,6 +68,15 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
         self.activity = 'Working'
         print('Initial activity:', self.activity)
         self.get_logger().debug('Activity set')
+
+
+        self.create_service(StrToLowerUpperService, 'str_to_lower_upper_%s' % (nid,), self.str_to_lower_upper_callback)
+
+
+    def str_to_lower_upper_callback(self, request, response):
+        response.lower = request.data.lower()
+        response.upper = request.data.upper()
+        return response
 
 
     # service callbacks

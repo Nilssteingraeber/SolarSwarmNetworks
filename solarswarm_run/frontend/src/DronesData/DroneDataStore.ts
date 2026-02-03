@@ -40,14 +40,13 @@ export const useDroneDataStore = defineStore('droneData', {
 
             if (existing) {
                 Object.assign(existing.robot, robot)
-                existing.last_heard = Date.now()
                 return
             }
 
             const newRobot = robot as Robot
             this.drones.push({
                 robot: newRobot,
-                last_heard: Date.now()
+                last_heard: newRobot.last_heard || 0
             })
 
         },

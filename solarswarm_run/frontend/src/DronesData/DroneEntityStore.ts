@@ -1,6 +1,4 @@
-// @ts-expect-error
 import droneModel from '../assets/Robots/Drone.glb?url'
-// @ts-expect-error
 import nucModel from '../assets/Robots/NUC.glb?url'
 
 import { defineStore } from 'pinia'
@@ -15,26 +13,27 @@ import {
     Color,
     LabelStyle,
     VerticalOrigin,
-    PolylineOutlineMaterialProperty,
     CallbackProperty,
     Cartographic,
-    Ellipsoid,
     Cartesian2,
     Viewer,
     ExtrapolationType,
-    PolylineDashMaterialProperty
+    PolylineDashMaterialProperty,
+    // Primitive API imports
+    GeometryInstance,
+    PolylineGeometry,
+    PolylineColorAppearance,
+    PointPrimitiveCollection,
+    Primitive
 } from 'cesium'
 
 import { useDroneHistoryStore } from './DroneHistoryStore'
 import { useTimeStore } from '../stores/TimeStore'
 import type { Robot, RobotWithEntity } from '../models/Robot'
 
-const getDroneColor = (robot: Robot) => {
-    const timeStore = useTimeStore()
-    const now = timeStore.currentTime
+const getDroneColor = (robot: Robot, currentTime: number) => {
     const lastHeard = robot.last_heard || 0
-    // Difference in seconds
-    const timeSinceLast = (now - (lastHeard * 1000)) / 1000
+    const timeSinceLast = (currentTime - (lastHeard * 1000.0)) / 1000.0 / 1000.0
 
     if (timeSinceLast < 5) return Color.GREEN
     if (timeSinceLast < 7) return Color.YELLOW
@@ -45,11 +44,13 @@ const getDroneColor = (robot: Robot) => {
 export const useDroneEntityStore = defineStore('droneEntities', {
     state: () => ({
         viewer: null as Viewer | null,
-        entities: new Map<string, Entity>(),
-        robots: new Map<string, Robot>(),
-        connectionLines: new Map<string, Entity>(),
-        _flightPathCache: new Map<string, { start: number; end: number }[]>(),
-        _tickHandler: undefined as ((clock: any) => void) | undefined
+        entities: markRaw(new Map<string, Entity>()),
+        robots: markRaw(new Map<string, Robot>()),
+        connectionLines: markRaw(new Map<string, Entity>()),
+
+        // High-performance primitives
+        _flightPathPrimitives: markRaw(new Map<string, Primitive>()),
+        _hoverPointCollections: markRaw(new Map<string, PointPrimitiveCollection>())
     }),
 
     getters: {
@@ -81,99 +82,177 @@ export const useDroneEntityStore = defineStore('droneEntities', {
             const historyStore = useDroneHistoryStore()
             const timeStore = useTimeStore()
             const currentTimestamp = timeStore.currentTime
-            const windowMs = 2500
+            const windowMs = 5000
 
-            // 1. Get snapshot of all drones active in the current window
             const dronesMap = await historyStore.getDronesInWindow(currentTimestamp, windowMs)
 
-            for (const [nid, robot] of dronesMap.entries()) {
-                this.robots.set(nid, robot)
+            this.viewer.entities.suspendEvents()
 
-                // 2. Get the specific history entry for exact sub-second timestamping
+            const updatePromises = Array.from(dronesMap.entries()).map(async ([nid, robot]) => {
+                this.robots.set(nid, robot)
+                // Also ensure history is primed so we can draw paths immediately if selected
                 const entry = await historyStore.getSnapshotAt(nid, currentTimestamp, windowMs)
-                const useTime = entry ? JulianDate.fromDate(new Date(entry.timestamp)) : JulianDate.fromDate(new Date(currentTimestamp))
+
+                const useTime = entry
+                    ? JulianDate.fromDate(new Date(entry.timestamp))
+                    : JulianDate.fromDate(new Date(currentTimestamp))
 
                 if (!this.entities.has(nid)) {
-                    if (robot.point) {
-                        this._createEntity(robot, useTime)
-                    }
+                    if (robot.point) this._createEntity(robot, useTime)
                 } else {
                     this._updateEntity(robot, useTime)
                 }
-            }
+            })
+
+            await Promise.all(updatePromises)
+            this.viewer.entities.resumeEvents()
         },
 
         async drawFlightPath(nid: string, aroundTime?: number, entryCount: number = 50) {
             if (!this.viewer) return
             const historyStore = useDroneHistoryStore()
+            const timeStore = useTimeStore()
 
-            // Ensure data is loaded into cache first
-            const currentTime = aroundTime ?? useTimeStore().currentTime
+            // 1. Determine Time Window (TRAIL MODE: Past -> Now)
+            const currentTime = aroundTime ?? timeStore.currentTime
             const windowMs = entryCount * 1000
-            await historyStore.ensureDroneDataLoaded(nid, currentTime, windowMs)
+
+            // Load slightly more data than needed to ensure we have the start point
+            await historyStore.ensureDroneDataLoaded(nid, currentTime, windowMs + 5000)
 
             const history = historyStore.cache.get(nid)
             if (!history || history.length === 0) return
 
-            // Define window
-            const startTs = currentTime - (windowMs / 2)
-            const endTs = currentTime + (windowMs / 2)
+            // 2. Slice History (Trail Logic: [Now - Window] to [Now])
+            const startTs = currentTime - windowMs
+            const endTs = currentTime // Don't show future points in trail mode
 
-            // Optimized slice using sorted indices
             let startIdx = 0, endIdx = history.length - 1
             while (startIdx < history.length && history[startIdx].timestamp < startTs) startIdx++
             while (endIdx >= 0 && history[endIdx].timestamp > endTs) endIdx--
 
             const entries = history.slice(startIdx, endIdx + 1)
-            if (entries.length < 2) return
 
-            // Clean up previous path
+            // Need at least 1 point to draw a line to the drone
+            if (entries.length < 1) return
+
+            // --- CLEANUP ---
             this.removeFlightPathLines(nid)
 
-            const positions = entries.map(e => {
-                const p = e.data.point
-                return p ? Cartesian3.fromDegrees(p.lon, p.lat, p.alt ?? 150) : null
-            }).filter((p): p is Cartesian3 => p !== null)
+            // --- BUILD GEOMETRY ---
+            const positions: Cartesian3[] = []
+            const colors: Color[] = []
+            const hoverPoints: Cartesian3[] = []
 
-            // Draw Segments with lerped colors
-            for (let i = 0; i < positions.length - 1; i++) {
-                const p1 = positions[i]
-                const p2 = positions[i + 1]
-                const dist = Cartesian3.distance(p1, p2)
-                const isDotted = dist > 20 // threshold for "missing data" or jumps
+            const HOVER_RADIUS = 0.25
+            const MIN_HOVER_DURATION_MS = 2000
+            let clusterStartIdx = 0
+            let clusterCenter: Cartesian3 | null = null
 
-                const progress = i / (positions.length - 1)
-                const color = Color.lerp(
-                    Color.fromCssColorString("#001144"),
-                    Color.fromCssColorString("#00aaff"),
-                    progress,
-                    new Color()
-                )
+            // 3. Process History Points
+            for (let i = 0; i < entries.length; i++) {
+                const p = entries[i].data.point
+                if (!p) continue
 
-                this.viewer.entities.add({
-                    id: `${nid}-flightPath-${entries[i].timestamp}`,
-                    polyline: {
-                        positions: [p1, p2],
-                        width: isDotted ? 2 : 4,
-                        material: isDotted
-                            ? new PolylineDashMaterialProperty({ color, dashPattern: 255 })
-                            : new PolylineOutlineMaterialProperty({
-                                color,
-                                outlineColor: Color.BLACK.withAlpha(0.5),
-                                outlineWidth: 1
-                            })
+                const pos = Cartesian3.fromDegrees(p.lon, p.lat, p.alt ?? 150)
+                positions.push(pos)
+
+                // --- GRADIENT COLOR ---
+                // 0.0 (Oldest) -> 1.0 (Latest History Point)
+                const progress = i / (entries.length > 1 ? entries.length - 1 : 1)
+
+                // Hue: Blue (0.65) -> Red (0.0)
+                const hue = 0.65 * (1.0 - progress)
+                // Lightness: Fades tail to black (0.0 -> 0.5)
+                const lightness = 0.5 * Math.pow(progress, 0.4)
+
+                colors.push(Color.fromHsl(hue, 1.0, lightness, 1.0))
+
+                // --- HOVER LOGIC ---
+                if (i === 0) {
+                    clusterCenter = pos
+                    clusterStartIdx = 0
+                } else if (clusterCenter) {
+                    const dist = Cartesian3.distance(pos, clusterCenter)
+                    if (dist > HOVER_RADIUS) {
+                        const duration = entries[i - 1].timestamp - entries[clusterStartIdx].timestamp
+                        if (duration > MIN_HOVER_DURATION_MS) {
+                            hoverPoints.push(clusterCenter)
+                        }
+                        clusterStartIdx = i
+                        clusterCenter = pos
                     }
+                }
+            }
+
+            // 4. [CRITICAL FIX] Add the "Connector" Point
+            // The history is discrete (e.g. every 100ms). The drone is interpolated (e.g. +50ms).
+            // We must add the drone's *exact* current position to the line so it touches the model.
+            const entity = this.entities.get(nid)
+            if (entity && entity.position) {
+                const nowJulian = JulianDate.fromDate(new Date(currentTime))
+                const currentPos = entity.position.getValue(nowJulian)
+
+                if (currentPos) {
+                    const lastHistPos = positions[positions.length - 1]
+                    // Only add if we have moved slightly from the last history tick
+                    if (Cartesian3.distance(currentPos, lastHistPos) > 0.01) {
+                        positions.push(currentPos)
+                        // The tip of the line is fully Red and Bright
+                        colors.push(Color.fromHsl(0.0, 1.0, 0.5, 1.0))
+                    }
+                }
+            }
+
+            // --- RENDER PATH ---
+            if (positions.length >= 2) {
+                const linePrimitive = this.viewer.scene.primitives.add(new Primitive({
+                    geometryInstances: new GeometryInstance({
+                        geometry: new PolylineGeometry({
+                            positions: positions,
+                            width: 4.0,
+                            vertexFormat: PolylineColorAppearance.VERTEX_FORMAT,
+                            colors: colors,
+                            colorsPerVertex: true
+                        })
+                    }),
+                    appearance: new PolylineColorAppearance({ translucent: false }),
+                    asynchronous: false
+                }))
+                this._flightPathPrimitives.set(nid, markRaw(linePrimitive))
+            }
+
+            // --- RENDER HOVER POINTS ---
+            if (hoverPoints.length > 0) {
+                const pointCollection = this.viewer.scene.primitives.add(new PointPrimitiveCollection())
+                hoverPoints.forEach(pt => {
+                    pointCollection.add({
+                        position: pt,
+                        color: Color.WHITE.withAlpha(0.9),
+                        outlineColor: Color.BLACK,
+                        outlineWidth: 2,
+                        pixelSize: 6,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    })
                 })
+                this._hoverPointCollections.set(nid, markRaw(pointCollection))
             }
         },
 
         removeFlightPathLines(nid: string) {
             if (!this.viewer) return
-            const prefix = `${nid}-flightPath-`
-            const toRemove = this.viewer.entities.values.filter(e =>
-                typeof e.id === 'string' && e.id.startsWith(prefix)
-            )
-            toRemove.forEach(e => this.viewer?.entities.remove(e))
+
+            const linePrim = this._flightPathPrimitives.get(nid)
+            if (linePrim) {
+                this.viewer.scene.primitives.remove(linePrim)
+                this._flightPathPrimitives.delete(nid)
+            }
+
+            const pointColl = this._hoverPointCollections.get(nid)
+            if (pointColl) {
+                this.viewer.scene.primitives.remove(pointColl)
+                this._hoverPointCollections.delete(nid)
+            }
         },
 
         _createEntity(robot: Robot, recordedTime: JulianDate) {
@@ -191,12 +270,9 @@ export const useDroneEntityStore = defineStore('droneEntities', {
                 id: robot.nid,
                 position: sampled,
                 orientation: new VelocityOrientationProperty(sampled),
-                model: {
-                    uri: robot.type === 'nuc' ? nucModel : droneModel,
-                    scale: 1.2
-                },
+                model: { uri: nucModel, scale: 1.2 },
                 label: {
-                    text: robot.display_name ?? 'Drone',
+                    text: robot.display_name ?? robot.nid,
                     font: '14px monospace',
                     style: LabelStyle.FILL_AND_OUTLINE,
                     outlineWidth: 3,
@@ -206,7 +282,7 @@ export const useDroneEntityStore = defineStore('droneEntities', {
                 },
                 point: {
                     pixelSize: 12,
-                    color: new CallbackProperty(() => getDroneColor(robot), false),
+                    color: new CallbackProperty(() => getDroneColor(robot, useTimeStore().currentTime), false),
                     outlineColor: Color.BLACK,
                     outlineWidth: 2,
                     disableDepthTestDistance: Number.POSITIVE_INFINITY
@@ -216,18 +292,15 @@ export const useDroneEntityStore = defineStore('droneEntities', {
                     droneData: new ConstantProperty(robot)
                 }
             })
-
             this.entities.set(robot.nid, markRaw(ent))
 
-            // Ground Connection Line
             const lineEnt = this.viewer.entities.add({
                 id: `${robot.nid}-line`,
                 polyline: {
-                    positions: new CallbackProperty(() => {
-                        const now = JulianDate.fromDate(new Date(useTimeStore().currentTime))
-                        const dronePos = sampled.getValue(now)
+                    positions: new CallbackProperty((time) => {
+                        const dronePos = sampled.getValue(time)
                         if (!dronePos) return []
-                        const carto = Ellipsoid.WGS84.cartesianToCartographic(dronePos)
+                        const carto = Cartographic.fromCartesian(dronePos)
                         const groundPos = Cartesian3.fromRadians(carto.longitude, carto.latitude, 0)
                         return [dronePos, groundPos]
                     }, false),
@@ -251,20 +324,24 @@ export const useDroneEntityStore = defineStore('droneEntities', {
             if (ent.position instanceof SampledPositionProperty) {
                 ent.position.addSample(recordedTime, newPos)
             }
-
-            // Update the underlying robot data for the color callback
             this.robots.set(robot.nid, robot)
+            if (ent.properties && ent.properties.droneData) {
+                ent.properties.droneData.setValue(robot)
+            }
         },
 
         clear() {
             if (this.viewer) {
                 this.entities.forEach(ent => this.viewer!.entities.remove(ent))
                 this.connectionLines.forEach(line => this.viewer!.entities.remove(line))
+                this._flightPathPrimitives.forEach(prim => this.viewer!.scene.primitives.remove(prim))
+                this._hoverPointCollections.forEach(coll => this.viewer!.scene.primitives.remove(coll))
             }
             this.entities.clear()
             this.robots.clear()
             this.connectionLines.clear()
-            this._flightPathCache.clear()
+            this._flightPathPrimitives.clear()
+            this._hoverPointCollections.clear()
         }
     }
 })
