@@ -1,5 +1,12 @@
 FROM ros:jazzy-ros-base
 
+COPY solarswarm/ /app/solarswarm/
+WORKDIR /app/solarswarm
+
+SHELL ["/bin/bash", "-c"]
+RUN apt-get update && rosdep update && rosdep install -i --from-path src --rosdistro jazzy -y
+RUN source /opt/ros/jazzy/setup.bash && colcon build --packages-select custom_interfaces
+
 # Set working directory
 WORKDIR /app
 
@@ -23,4 +30,5 @@ EXPOSE 8000
 ENV ROS_DISTRO=jazzy
 
 # Start command that sources ROS and starts FastAPI
-CMD ["bash", "-lc", "source /opt/ros/jazzy/setup.bash && cd /app && python3 setup.py && uvicorn main:app --host 0.0.0.0 --port 8000"]
+# CMD ["bash", "-lc", "sleep infinity"]
+CMD ["bash", "-lc", "source solarswarm/install/setup.bash && cd /app && uvicorn main:app --host 0.0.0.0 --port 8000 --log-level error"]

@@ -1,4 +1,4 @@
-import { ref, type Ref, shallowRef, shallowReactive, triggerRef } from 'vue'
+import { ref, type Ref, shallowRef, triggerRef, reactive } from 'vue'
 import { defineStore } from 'pinia'
 import type { Robot } from '../models/Robot'
 import { useTimeStore } from '../stores/TimeStore'
@@ -41,158 +41,219 @@ function findInsertionIndex(history: RobotHistoryEntry[], timestamp: number): nu
 }
 
 export const useDroneHistoryStore = defineStore('droneHistory', () => {
-    const db: Ref<IDBDatabase | null> = ref(null)
-    const dbPromise: Ref<Promise<IDBDatabase> | null> = ref(null)
+    // 1. Worker for WRITES
+    const worker = new Worker(
+        new URL('../workers/db.worker.ts', import.meta.url),
+        { type: 'module' }
+    );
+
     const maxEntriesPerDrone = ref(5000)
     const cache = shallowRef(new Map<string, RobotHistoryEntry[]>())
-    const pendingLoads = new Map<string, Promise<void>>()
+    const activeRobotCount = ref(0)
 
-    const cacheCenterTime = ref(useTimeStore().currentTime)
-    const cacheWindowMs = ref(60_000)
-    const timeStore = useTimeStore()
+    // Metrics
+    const isLoading = ref(false)
+    const dbLoadCount = ref(0)
 
-    const initDB = async (): Promise<IDBDatabase> => {
-        if (db.value) return db.value
-        if (dbPromise.value) return dbPromise.value
-        dbPromise.value = new Promise((resolve, reject) => {
-            const request = indexedDB.open('DroneHistoryDB', 1)
-            request.onupgradeneeded = (e) => {
-                const dbRes = (e.target as IDBOpenDBRequest).result
-                if (!dbRes.objectStoreNames.contains('robots')) {
-                    const store = dbRes.createObjectStore('robots', { keyPath: ['nid', 'timestamp'] })
-                    store.createIndex('nid_timestamp', ['nid', 'timestamp'])
-                    store.createIndex('nid', 'nid')
+    // Known NIDs
+    const knownNids = reactive(new Set<string>())
+
+    // --- CACHE MANAGEMENT ---
+    const insertIntoCacheOptimized = (history: RobotHistoryEntry[], entry: RobotHistoryEntry) => {
+        const len = history.length;
+        if (len === 0 || entry.timestamp >= history[len - 1].timestamp) {
+            history.push(entry);
+            return;
+        }
+        const idx = findInsertionIndex(history, entry.timestamp);
+        if (idx !== -1) history.splice(idx, 0, entry);
+    }
+
+    const addRobotsBatch = (robots: Robot[], timestamp?: number) => {
+        if (!robots.length) return
+        const ts = timestamp ?? Date.now()
+        activeRobotCount.value = robots.length
+
+        const dbEntries = new Array(robots.length)
+        const map = cache.value
+
+        for (let i = 0; i < robots.length; i++) {
+            const r = robots[i]
+            const entry = { nid: r.nid, timestamp: ts, data: r }
+            dbEntries[i] = entry
+
+            if (!knownNids.has(r.nid)) knownNids.add(r.nid)
+
+            let history = map.get(r.nid)
+            if (!history) {
+                history = []
+                map.set(r.nid, history)
+            }
+            insertIntoCacheOptimized(history, entry)
+        }
+
+        triggerRef(cache)
+        worker.postMessage({ type: 'WRITE_BATCH', payload: dbEntries })
+        schedulePrune()
+    }
+
+    // --- PRUNING ---
+    let pruneTimeout: number | null = null
+    const schedulePrune = () => {
+        if (pruneTimeout) return
+        pruneTimeout = window.setTimeout(() => {
+            pruneAllCaches()
+            pruneTimeout = null
+        }, 5000)
+    }
+
+    const pruneAllCaches = () => {
+        const map = cache.value
+        const max = maxEntriesPerDrone.value
+        for (const history of map.values()) {
+            if (history.length > max + 500) {
+                const startIdx = history.length - max
+                if (startIdx > 0) history.splice(0, startIdx)
+            }
+        }
+    }
+
+    // --- DB INIT ---
+    let _db: IDBDatabase | null = null
+    const initDBRead = async (): Promise<IDBDatabase> => {
+        if (_db) return _db;
+        return new Promise((resolve, reject) => {
+            // CRITICAL: Version 2
+            const req = indexedDB.open('DroneHistoryDB', 2);
+
+            req.onupgradeneeded = (e: any) => {
+                const db = e.target.result;
+                // CRITICAL: Ensure store name is 'history'
+                if (!db.objectStoreNames.contains('history')) {
+                    const store = db.createObjectStore('history', { keyPath: ['nid', 'timestamp'] });
+                    store.createIndex('nid_timestamp', ['nid', 'timestamp']);
+                }
+            };
+
+            req.onsuccess = () => { _db = req.result; resolve(_db!) }
+            req.onerror = (e) => reject(e)
+        })
+    }
+
+    // --- ACTIONS ---
+    const discoverAvailableDrones = async () => {
+        const db = await initDBRead()
+        return new Promise<void>((resolve) => {
+            isLoading.value = true
+            const tx = db.transaction('history', 'readonly')
+            const store = tx.objectStore('history')
+            const req = store.openCursor()
+            const seen = new Set<string>()
+
+            req.onsuccess = (e: any) => {
+                const cursor = e.target.result
+                if (cursor) {
+                    const nid = cursor.value.nid
+                    if (nid && !seen.has(nid)) {
+                        seen.add(nid)
+                        knownNids.add(nid)
+                    }
+                    cursor.continue()
+                } else {
+                    isLoading.value = false
+                    resolve()
                 }
             }
-            request.onsuccess = () => { db.value = request.result; resolve(db.value) }
-            request.onerror = () => { dbPromise.value = null; reject(request.error) }
+            req.onerror = () => { isLoading.value = false; resolve() }
         })
-        return dbPromise.value
-    }
-
-    const insertIntoCache = (nid: string, entry: RobotHistoryEntry) => {
-        let history = cache.value.get(nid)
-        if (!history) {
-            history = shallowReactive<RobotHistoryEntry[]>([])
-            cache.value.set(nid, history)
-            triggerRef(cache)
-        }
-        if (history.length === 0 || entry.timestamp > history[history.length - 1].timestamp) {
-            history.push(entry)
-        } else {
-            const idx = findInsertionIndex(history, entry.timestamp)
-            if (idx !== -1) history.splice(idx, 0, entry)
-        }
-    }
-
-    const pruneCacheToWindow = (targetNid?: string) => {
-        const start = cacheCenterTime.value - cacheWindowMs.value / 2
-        const max = maxEntriesPerDrone.value
-        const prune = (h: RobotHistoryEntry[]) => {
-            let count = 0
-            while (count < h.length && h[count].timestamp < start) count++
-            if (count > 0) h.splice(0, count)
-            if (h.length > max) h.splice(0, h.length - max)
-        }
-        if (targetNid) {
-            const h = cache.value.get(targetNid); if (h) prune(h)
-        } else {
-            cache.value.forEach(prune)
-        }
     }
 
     const loadIncrementalHistory = async (nid: string, startTime: number, endTime: number) => {
-        const loadKey = `${nid}-${startTime}-${endTime}`
-        if (pendingLoads.has(loadKey)) return pendingLoads.get(loadKey)
+        const db = await initDBRead();
+        return new Promise<void>((resolve, reject) => {
+            isLoading.value = true
+            const tx = db.transaction('history', 'readonly');
+            const store = tx.objectStore('history');
+            const index = store.index('nid_timestamp');
 
-        const loadPromise = (async () => {
-            const dbConn = await initDB()
-            const tx = dbConn.transaction('robots', 'readonly')
-            const store = tx.objectStore('robots')
-            const index = store.index('nid_timestamp')
-            const range = IDBKeyRange.bound([nid, startTime], [nid, endTime])
+            const range = IDBKeyRange.bound([nid, startTime], [nid, endTime]);
+            const request = index.getAll(range);
 
-            return new Promise<void>((resolve, reject) => {
-                const request = index.openCursor(range)
-                request.onsuccess = (e) => {
-                    const cursor = (e.target as IDBRequest).result as IDBCursorWithValue | null
-                    if (!cursor) return resolve()
-                    insertIntoCache(cursor.value.nid, cursor.value)
-                    cursor.continue()
+            request.onsuccess = () => {
+                const results: RobotHistoryEntry[] = request.result;
+                if (results && results.length > 0) {
+                    dbLoadCount.value += results.length
+                    const map = cache.value;
+                    let history = map.get(nid);
+                    if (!history) {
+                        history = [];
+                        map.set(nid, history);
+                    }
+                    results.forEach(entry => insertIntoCacheOptimized(history!, entry));
+                    triggerRef(cache);
                 }
-                request.onerror = () => reject(request.error)
-            })
-        })()
-        pendingLoads.set(loadKey, loadPromise)
-        try { await loadPromise } finally { pendingLoads.delete(loadKey) }
+                isLoading.value = false
+                resolve();
+            };
+            request.onerror = (e) => {
+                isLoading.value = false
+                reject(e);
+            }
+        });
     }
 
-    const getSnapshotAt = async (nid: string, timestamp: number, windowSizeMs?: number): Promise<RobotHistoryEntry | undefined> => {
-        const toleranceMs = windowSizeMs ?? 2500
+    const ensureDroneDataLoaded = async (nid: string, centerTime: number, totalWindowMs = 60_000) => {
+        const bufferMultiplier = 3
+        const effectiveWindow = totalWindowMs * bufferMultiplier
+        const start = centerTime - effectiveWindow / 2
+        const end = centerTime + effectiveWindow / 2
+
         const history = cache.value.get(nid)
+        if (history && history.length > 0) {
+            const minCached = history[0].timestamp;
+            const maxCached = history[history.length - 1].timestamp;
+            if (minCached <= start && maxCached >= end) return;
+        }
+        await loadIncrementalHistory(nid, start, end)
+    }
+
+    const getSnapshotAt = async (nid: string, timestamp: number, windowSizeMs = 2500): Promise<RobotHistoryEntry | undefined> => {
+        let history = cache.value.get(nid)
         if (history && history.length > 0) {
             const idx = findClosestIndex(history, timestamp)
             const entry = history[idx]
-            if (Math.abs(entry.timestamp - timestamp) <= toleranceMs) return entry
+            if (Math.abs(entry.timestamp - timestamp) <= windowSizeMs) return entry
         }
-        await loadIncrementalHistory(nid, timestamp - toleranceMs, timestamp + toleranceMs)
-        const updated = cache.value.get(nid)
-        if (updated && updated.length > 0) {
-            const idx = findClosestIndex(updated, timestamp)
-            const entry = updated[idx]
-            if (Math.abs(entry.timestamp - timestamp) <= toleranceMs) return entry
+        await ensureDroneDataLoaded(nid, timestamp, windowSizeMs * 4)
+        history = cache.value.get(nid)
+        if (history && history.length > 0) {
+            const idx = findClosestIndex(history, timestamp)
+            const entry = history[idx]
+            if (Math.abs(entry.timestamp - timestamp) <= windowSizeMs) return entry
         }
         return undefined
     }
 
-    /**
-     * Iterates through all known drones and returns their state at the given time.
-     */
     const getDronesInWindow = async (centerTime: number, windowMs: number): Promise<Map<string, Robot>> => {
         const result = new Map<string, Robot>()
         const tolerance = windowMs / 2
-
-        // We use the existing cache keys to see which drones we know about
-        for (const nid of cache.value.keys()) {
+        for (const nid of knownNids) {
             const entry = await getSnapshotAt(nid, centerTime, tolerance)
-            if (entry) {
-                result.set(nid, entry.data)
-            }
+            if (entry) result.set(nid, entry.data)
         }
         return result
     }
 
-    const addRobotsBatch = async (robots: Robot[], timestamp?: number) => {
-        if (!robots.length) return
-        const ts = timestamp ?? Date.now()
-        robots.forEach(r => {
-            insertIntoCache(r.nid, { nid: r.nid, timestamp: ts, data: r })
-            pruneCacheToWindow(r.nid)
-        })
-        try {
-            const dbConn = await initDB()
-            const tx = dbConn.transaction('robots', 'readwrite')
-            const store = tx.objectStore('robots')
-            robots.forEach(r => store.put({ nid: r.nid, timestamp: ts, data: r }))
-            return new Promise((res, rej) => { tx.oncomplete = () => res(true); tx.onerror = () => rej(tx.error) })
-        } catch (e) { console.warn("DB Write Error", e) }
-    }
-
-    const ensureDroneDataLoaded = async (nid: string, centerTime: number, totalWindowMs = 60_000) => {
-        const start = centerTime - totalWindowMs / 2, end = centerTime + totalWindowMs / 2
-        const h = cache.value.get(nid)
-        if (h && h.length > 0 && h[0].timestamp <= start && h[h.length - 1].timestamp >= end) return
-        await loadIncrementalHistory(nid, start, end)
-    }
-
     return {
         cache,
-        cacheCenterTime,
-        cacheWindowMs,
-        getSnapshotAt,
-        getDronesInWindow, // Added
+        activeRobotCount,
+        isLoading,
+        dbLoadCount,
+        knownNids,
         addRobotsBatch,
+        getSnapshotAt,
+        getDronesInWindow,
         ensureDroneDataLoaded,
-        loadIncrementalHistory // Added for flight path usage
+        discoverAvailableDrones
     }
 })

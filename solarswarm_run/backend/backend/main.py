@@ -1,15 +1,20 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any, Dict
 import models
 from database import engine, SessionLocal
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
+
+
 import json
 import subprocess
 import os
 import shlex
 import time
+import re
+import ast
 
 '''
 Cheatcode alles resetten
@@ -133,7 +138,8 @@ def ros_yaml_repr(obj) -> str:
 
 def run_ros2_command(nid: str, ros_cmd: str, timeout: int = 10):
     """Führe ros2-Befehle in einer gesourcten bash-Shell aus und setze ROS_DOMAIN_ID auf nid."""
-    full = f"source /opt/ros/{ROS_DISTRO}/setup.bash && ROS_DOMAIN_ID={0} {ros_cmd}"
+    
+    full = f"source /opt/ros/{ROS_DISTRO}/setup.bash && source /app/solarswarm/install/local_setup.bash && ROS_DOMAIN_ID={0} {ros_cmd}"
     try:
         completed = subprocess.run(["bash", "-lc", full], capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired as e:
@@ -152,9 +158,19 @@ def read_status(status_id: int, db: Session = db_dependency):
         raise HTTPException(status_code=404, detail="Status not found")
     return status
 
-@app.get("/status/robot/{robot_id}", response_model=List[StatusResponse])
+@app.get("/status/robot/{robot_id}", response_model=StatusResponse)
 def read_status_by_robot(robot_id: int, db: Session = db_dependency):
-    return db.query(models.Status).filter(models.Status.robot_id == robot_id).all()
+    last_status = (
+        db.query(models.Status)
+        .filter(models.Status.robot_id == robot_id)
+        .order_by(desc(models.Status.last_heard))  # or models.Status.id if you don't have timestamp # type: ignore
+        .first()  # only fetch the first (latest) row
+    )
+
+    if not last_status:
+        raise HTTPException(status_code=404, detail="Status not found")
+
+    return last_status
 
 # Robot Endpunkte
 @app.get("/robot/", response_model=List[RobotResponse])
@@ -268,7 +284,54 @@ def list_ros_services(nid: str, timeout: int = 8):
         else:
             services.append({"name": line, "type": None})
 
+    
+    print(services)
+
     return {"nid": nid, "services": services, "raw": out}
+
+# Pydantic Model for the query
+class ServiceInfoQuery(BaseModel):
+    info_service_name: str = Field(..., description="The name of the info-provider service found in the list, e.g. /robot_service_info_8bbe...")
+    target_interface: str = Field(..., description="The interface type you want to know about, e.g. custom_interfaces/srv/SetRobotActivity")
+
+@app.post("/ros/{nid}/service_info")
+def get_service_interface_info(nid: str, query: ServiceInfoQuery):
+    SERVICE_TYPE = "custom_interfaces/srv/RobotInterfaceInfo"
+    target_interface_type = query.target_interface.strip()
+    ros_args = f"{{interface: '{str(target_interface_type)}'}}"
+
+    cmd = (
+        f"ros2 service call "
+        f"{shlex.quote(query.info_service_name)} "
+        f"{shlex.quote(SERVICE_TYPE)} "
+        f"\"{ros_args}\""
+    )
+
+    out = run_ros2_command(nid, cmd, timeout=15)
+
+    if out["returncode"] != 0:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "ROS2 Service Call Failed",
+                "stderr": out["stderr"],
+                "command": cmd
+            }
+        )
+
+    stdout = out["stdout"]
+    
+    def_match = re.search(r"definition=([\"'])([\s\S]*?)\1", stdout)
+    int_match = re.search(r"interfaces=\[(.*?)\]", stdout)
+    definition = def_match.group(2).replace("\\n", "\n") if def_match else ""
+    interfaces = [i.strip().strip("'\"") for i in int_match.group(1).split(",")] if int_match and int_match.group(1) else []
+
+    return {
+        "success": True,
+        "definition": definition,
+        "interfaces": interfaces,
+        "command": cmd
+    }
 
 @app.post("/ros/{nid}/services/call")
 def call_ros_service(nid: str, call: ServiceCall):
@@ -288,3 +351,70 @@ def call_ros_service(nid: str, call: ServiceCall):
     out = run_ros2_command(nid, ros_cmd, timeout=call.timeout or 10)
     success = out["returncode"] == 0
     return {"nid": nid, "service": call.service_name, "success": success, "result": out}
+
+
+
+
+
+
+
+
+
+# --------------- Batching -----------------
+
+# Request body model
+class RobotIdsRequest(BaseModel):
+    robot_ids: List[int]
+
+@app.post("/neighbor/robots")
+def get_neighbors_batch(req: RobotIdsRequest, db: Session = Depends(get_db)):
+    robot_ids = req.robot_ids
+    neighbors = db.query(models.Neighbor).filter(models.Neighbor.robot_id.in_(robot_ids)).all()
+    
+    # Group by robot_id
+    result: Dict[int, List[Dict]] = {}
+    for n in neighbors:
+        result.setdefault(n.robot_id, []).append({
+            "neighbor": n.neighbor,
+            "strength": n.strength
+        })
+    
+    return result
+
+
+class RobotIdsRequest(BaseModel):
+    robot_ids: List[int]
+
+@app.post("/status/robots", response_model=List[StatusResponse])
+def get_statuses_batch(req: RobotIdsRequest, db: Session = Depends(get_db)):
+    robot_ids = req.robot_ids
+    statuses = db.query(models.Status).filter(models.Status.robot_id.in_(robot_ids)).all()
+
+    # pick latest per robot
+    latest_statuses: Dict[int, models.Status] = {}
+    for s in statuses:
+        if s.robot_id not in latest_statuses or s.last_heard > latest_statuses[s.robot_id].last_heard:
+            latest_statuses[s.robot_id] = s
+
+    return list(latest_statuses.values())
+
+
+class RobotIdsRequest(BaseModel):
+    robot_ids: list[int]
+
+@app.post("/neighbor/robots")
+def get_neighbors_batch_post(
+    payload: RobotIdsRequest = Body(...),
+    db: Session = Depends(get_db)
+):
+    neighbors = db.query(models.Neighbor).filter(models.Neighbor.robot_id.in_(payload.robot_ids)).all()
+    
+    # Group results by robot_id
+    result: dict[int, list[dict]] = {}
+    for n in neighbors:
+        result.setdefault(n.robot_id, []).append({
+            "neighbor": n.neighbor,
+            "strength": n.strength
+        })
+    
+    return result

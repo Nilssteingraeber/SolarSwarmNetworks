@@ -1,13 +1,15 @@
 // DronesPollingService.ts
 import { Robot } from "../models/Robot"
+import { useServiceInterfaceStore } from "../stores/ServiceInterfaceStore"
 import { DroneSimulatorBackend } from "./DroneSimulatorBackend"
+import { parseInterface, prettyPrintInterface } from "./NodeRosInterfaces"
 
 interface Status {
     status_id: number
     robot_id: number
     battery?: number
     cpu_1?: number
-    point?: { lon: number; lat: number; alt?: number }
+    point?: Robot["point"]
     orientation?: { x: number; y: number; z: number; w: number }
     last_heard: number
 }
@@ -27,6 +29,8 @@ export class DronesPollingService {
 
     private addRobotsBatch: (robots: Robot[], timestamp: number) => Promise<void> | void
 
+    private interfaceStore = useServiceInterfaceStore()
+
     constructor(options: {
         baseUrl: string
         intervalMs?: number
@@ -37,7 +41,6 @@ export class DronesPollingService {
         this.baseUrl = options.baseUrl
         this.intervalMs = options.intervalMs ?? 1000
         this.addRobotsBatch = options.addRobotsBatch
-        // @ts-expect-error
         this.useSimulator = options.useSimulator ?? import.meta.env.VITE_USE_SIM === 'true'
         this.droneSimulatorBackend = options.droneSimulatorBackend
     }
@@ -65,58 +68,51 @@ export class DronesPollingService {
 
     private async pollOnce() {
         const timestamp = Date.now()
-
         try {
+            // 1️⃣ Fetch all robots
             const robots = await this.fetchRobots()
+            if (!robots.length) return
 
-            const robotById = new Map<string, typeof robots[number]>()
-            for (const r of robots) {
-                robotById.set(r.nid, r)
-            }
+            // Map robots by NID for quick neighbor lookup
+            const robotById = new Map<number, Robot>()
+            robots.forEach(r => robotById.set(r.robot_id, r))
 
-            const mergedResults = await Promise.all(
-                robots.map(async (robot) => {
-                    try {
-                        const [status, neighbors] = await Promise.all([
-                            this.fetchLatestStatus(robot.robot_id),
-                            this.fetchNeighbors(robot.robot_id)
-                        ])
+            // 2️⃣ Prepare array of IDs for batch queries
+            const robotIds = robots.map(r => r.robot_id)
 
-                        const connectivity: Record<string, number> = {}
-                        for (const n of neighbors) {
-                            const neighborRobot = robotById.get(n.robot_id.toString())
-                            if (neighborRobot) {
-                                connectivity[neighborRobot.nid] = n.strength ?? 0
-                            }
-                        }
+            // 3️⃣ Fetch all statuses and neighbors in parallel
+            const [statusesResponse, neighborsResponse] = await Promise.all([
+                this.fetchLatestStatusBatch(robotIds),      // expects { [robotId]: Status }
+                this.fetchNeighborsBatch(robotIds)          // expects { [robotId]: Neighbor[] }
+            ])
 
-                        return {
-                            ...robot,
-                            ...status,
-                            connectivity
-                        } as Robot
-                    } catch (err) {
-                        console.warn(
-                            "[DronesPolling] Failed robot fetch",
-                            robot.robot_id,
-                            err
-                        )
-                        return null
-                    }
-                })
-            )
+            // 4️⃣ Merge data into a single array of Robots
+            const mergedBatch: Robot[] = robots.map(r => {
+                const status = statusesResponse[r.robot_id] ?? {}
+                const neighborList = neighborsResponse[r.robot_id] ?? []
 
-            const mergedBatch = mergedResults.filter(
-                (r): r is Robot => r !== null
-            )
+                const connectivity: Record<string, number> = {}
+                for (const n of neighborList) {
+                    const neighborRobot = robotById.get(n.neighbor)
+                    if (neighborRobot) connectivity[neighborRobot.nid] = n.strength ?? 0
+                }
 
-            if (mergedBatch.length > 0) {
-                await this.addRobotsBatch(mergedBatch, timestamp)
-            }
+                return {
+                    ...r,
+                    ...status,
+                    connectivity
+                } as Robot
+            })
+
+            // 5️⃣ Push the batch to your store
+            if (mergedBatch.length) await this.addRobotsBatch(mergedBatch, timestamp)
+
         } catch (err) {
             console.error("[DronesPolling] Poll failed", err)
         }
     }
+
+
 
 
     // ==============================
@@ -149,36 +145,90 @@ export class DronesPollingService {
         }
     }
 
+    public async fetchServicesList(nid: string) {
+        const res = await fetch(`${this.baseUrl}/ros/${nid}/services`)
+        const json = (await res.json())?.services as { name: string, type: string }[]
+
+        console.log(json)
+
+        const robotServiceInterface = json.find(
+            s => s.type === "custom_interfaces/srv/RobotInterfaceInfo"
+        )
+
+        if (!robotServiceInterface) {
+            console.error("RobotInterfaceInfo service not found")
+            return []
+        }
+
+        const customServices = json.filter(
+            s => {
+
+                return s.type.startsWith("custom_interfaces/srv/") && s.name.indexOf(nid) !== -1
+            }
+        )
+
+        console.log(customServices)
+
+        const service_info = await Promise.all(
+            customServices.map(async (service) => {
+
+                const res = await fetch(`${this.baseUrl}/ros/${nid}/service_info`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        info_service_name: robotServiceInterface.name,
+                        target_interface: service.type,
+                    }),
+                })
+
+                const json = await res.json()
+
+                return {
+                    serviceName: service.name,
+                    serviceType: service.type,
+                    parsed: parseInterface(json.definition),
+                }
+            })
+        )
+
+        service_info.forEach((svc) => {
+            this.interfaceStore.addOrUpdate(nid, svc)
+            console.debug(prettyPrintInterface(svc))
+        })
+
+        return service_info
+    }
+
+
 
     private async fetchLatestStatus(robotId: number): Promise<Partial<Robot>> {
         if (this.useSimulator && this.droneSimulatorBackend) {
             const statuses = this.droneSimulatorBackend.getStatus(robotId)
             if (!statuses.length) return {}
-            const latest = statuses[statuses.length - 1]
+            const latest = statuses.pop()
+
             return {
-                battery: latest.battery,
-                cpu_1: latest.cpu_1,
-                point: latest.point,
-                orientation: latest.orientation,
-                last_heard: latest.last_heard
+                battery: latest?.battery,
+                cpu_1: latest?.cpu_1,
+                point: latest?.point,
+                orientation: latest?.orientation,
+                last_heard: latest?.last_heard
             }
         }
 
         const res = await fetch(`${this.baseUrl}/status/robot/${robotId}`)
-        if (!res.ok) return {}
 
-        const list: Status[] = await res.json()
-        if (!list.length) return {}
+        if (!res.ok) { console.error("Err: " + res.status + "_" + res.statusText); return {} }
 
-        const latest = list[list.length - 1]
-
+        const latest: Status = await res.json()
+        if (!latest) return {}
 
         return {
-            battery: latest.battery,
-            cpu_1: latest.cpu_1,
+            battery: latest?.battery,
+            cpu_1: latest?.cpu_1,
             point: { lat: latest?.point?.x, lon: latest.point?.y, alt: 125.0 },
-            orientation: latest.orientation,
-            last_heard: latest.last_heard
+            orientation: latest?.orientation,
+            last_heard: new Date().getTime()
         }
     }
 
@@ -190,4 +240,83 @@ export class DronesPollingService {
         if (!res.ok) return []
         return res.json()
     }
+
+
+
+    private async fetchLatestStatusBatch(robotIds: number[]): Promise<Record<number, Partial<Robot>>> {
+        if (this.useSimulator && this.droneSimulatorBackend) {
+            const result: Record<number, Partial<Robot>> = {}
+            for (const id of robotIds) {
+                const statuses = this.droneSimulatorBackend.getStatus(id)
+                if (!statuses.length) continue
+                const latest = statuses[statuses.length - 1]
+                result[id] = {
+                    battery: latest?.battery,
+                    cpu_1: latest?.cpu_1,
+                    point: latest?.point,
+                    orientation: latest?.orientation,
+                    last_heard: latest?.last_heard
+                }
+            }
+            return result
+        }
+
+
+        const res = await fetch(`${this.baseUrl}/status/robots`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ robot_ids: robotIds }),
+        })
+
+        if (!res.ok) {
+            console.error("fetchLatestStatusBatch failed:", res.status, res.statusText)
+            return {}
+        }
+
+        const data: Status[] = await res.json()
+        const result: Record<number, Partial<Robot>> = {}
+
+        for (const s of data) {
+
+            result[s.robot_id] = {
+                battery: s.battery,
+                cpu_1: s.cpu_1,
+                point: { lat: s.point?.x, lon: s.point?.y, alt: 125.0 },
+                orientation: s.orientation,
+                last_heard: new Date().getTime()
+            }
+        }
+        return result
+    }
+
+    private async fetchNeighborsBatch(robotIds: number[]): Promise<Record<number, Neighbor[]>> {
+        if (this.useSimulator && this.droneSimulatorBackend) {
+            const result: Record<number, Neighbor[]> = {}
+            for (const id of robotIds) {
+                result[id] = this.droneSimulatorBackend.getNeighbors(id)
+            }
+            return result
+        }
+
+        try {
+            const res = await fetch(`${this.baseUrl}/neighbor/robots`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ robot_ids: robotIds }),
+            })
+
+            if (!res.ok) {
+                console.error("fetchNeighborsBatch failed:", res.status, res.statusText)
+                return {}
+            }
+
+            const data: Record<number, Neighbor[]> = await res.json()
+            return data
+        } catch (err) {
+            console.error("fetchNeighborsBatch error:", err)
+            return {}
+        }
+    }
+
+
 }
