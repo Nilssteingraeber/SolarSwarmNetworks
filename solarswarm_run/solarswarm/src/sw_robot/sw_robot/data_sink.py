@@ -14,17 +14,18 @@ from custom_interfaces.msg import NeighborList
 from json import loads, dumps
 from time import sleep
 from sw_robot.util.time_util import TimeUtil
-from sw_robot.util.sw_util import BaseStatusSub
-from sw_robot.util.sw_util import Util
+from sw_robot.util.sw_util import BaseStatusSub, Util
 from psycopg2 import Error
 from os import getenv
-
-FORWARD_TO_DB = getenv('FORWARD_TO_DB') # forward to DB unless not set to anything
-env = getenv('TRIES_TO_GET_STATES')
-TRIES_TO_GET_STATES = int(env) if env and env.isnumeric else 1
-
 import logging
 
+FORWARD_TO_DB = getenv('FORWARD_TO_DB')
+DB_CONNECT_RETRIES = int(getenv('DB_CONNECT_RETRIES', '30'))
+DB_CONNECT_DELAY = float(getenv('DB_CONNECT_DELAY', '1.0'))
+DATA_STALENESS_CUTOFF = float(getenv('DATA_STALENESS_CUTOFF', '30.0'))
+
+ENV = getenv('TRIES_TO_GET_STATES')
+TRIES_TO_GET_STATES = int(ENV) if ENV and ENV.isnumeric() else DB_CONNECT_RETRIES
 logging.basicConfig(
     filename=getenv('LOG_OUT'),
     level=logging.DEBUG,
@@ -38,7 +39,7 @@ class RobotStatusSub(BaseStatusSub):
         self.__nid_map = dict() # <nid>:<robot_id>
         self.__state_map = dict() # <activity>:<state_id>
         
-        # subscriptions
+
         self.createSubscription('battery', RobotBattery, 'robot_battery', self.subscription_callback)
         self.createSubscription('cpu', RobotCpu, 'robot_cpu', self.subscription_callback)
         self.createSubscription('activity', RobotActivity, 'robot_activity', self.subscription_callback)
@@ -53,23 +54,21 @@ class RobotStatusSub(BaseStatusSub):
             if self.connect_db():
                 try:
                     with self.conn.cursor() as cursor:
-                        cursor.execute('SELECT * FROM \"State\"')
-                        if cursor.rowcount:
-                            for row in cursor.fetchall():
-                                # row[0] = id, row[1] = description
-                                self.__state_map[row[1]] = row[0]
-                        else:
-                            logging.warning('Table state contained no entries')
+                        cursor.execute('SELECT * FROM "State"')
+                        for row in cursor.fetchall():
+                            self.__state_map[row[1]] = row[0]
+                    logging.info(f"Loaded {len(self.__state_map)} states.")
                     break
                 except Exception as e:
-                    logging.error('Failed to get states from DB: %s', (e,))
-                    logging.info('Trying again in 10s')
-                    sleep(10)
+                    logging.error('Failed to load states: %s', e)
+                    try:
+                        self.conn.rollback()
+                    except Exception as e:
+                        logging.error('Failed to rollback: %s', e)
+                    sleep(DB_CONNECT_DELAY)
             else:
-                logging.error('Failed to connect to DB')
-        if not len(self.__state_map):
-            logging.warning('Failed to get states from DB multiple times. Continuing without any state definitions.')
-    
+                logging.warning('DB not reachable while loading states')
+                sleep(DB_CONNECT_DELAY)
 
     # properties
     @property
@@ -100,20 +99,27 @@ class RobotStatusSub(BaseStatusSub):
         # find nids without robot_id
         try:
             # load current state from db
-            cursor.execute('SELECT robot_id, nid FROM \"Robot\"')
+            cursor.execute('SELECT robot_id, nid FROM "Robot"')
             if not cursor.rowcount:
                 logging.warning('Failed to load robots from db: No robots found.')
             for row in cursor.fetchall(): 
                 self.nid_map[row[1]] = row[0]
-            
+
             # insert missing robots
             for node in self.nodes.keys():
                 if node not in self.nid_map.keys():
-                    cursor.execute('INSERT INTO \"Robot\" (nid, ipv4, ipv6, mac) VALUES (%s, %s, %s, %s)', (
+
+
+                    logging.warning(self.nodes, self.nodes[node], self.__state_map, node)
+                    # local_data = self.nodes[node]
+                    # target_state = self.__state_map.get(local_data.get('activity'))
+
+                    cursor.execute('INSERT INTO "Robot" (nid, ipv4, ipv6, mac, state_id) VALUES (%s, %s, %s, %s, %s)', (
                         node,
                         self.nodes[node]['ipv4'],
                         self.nodes[node]['ipv6'],
                         self.nodes[node]['mac'],
+                        1
                     ))
                     unregistered = True
 
@@ -137,96 +143,124 @@ class RobotStatusSub(BaseStatusSub):
     
     def update_existing_nodes(self, cursor):
         try:
-            cursor.execute('SELECT nid, ipv4, ipv6, mac FROM \"Robot\"')
+            cursor.execute('SELECT robot_id, nid, state_id, display_name, ipv4, ipv6, mac FROM "Robot"')
             if cursor.rowcount:
                 for row in cursor.fetchall():
-                    # nid at 0, ipv4 at 1 ipv6 at 2, mac at 3
-                    nid = row[0]
-                    if nid not in self.nid_map.keys() or nid not in self.nodes.keys():
+
+                    nid = row[1]
+
+                    if nid not in self.nid_map or nid not in self.nodes:
                         continue
-                    if row[1] != self.nodes[nid]['ipv4'] or row[2] != self.nodes[nid]['ipv6'] or row[3] != self.nodes[nid]['mac']:
-                        cursor.execute('''UPDATE \"Robot\"
-                            SET ipv4 = %s, ipv6 = %s, mac = %s
-                            WHERE robot_id = %s''', (
-                                self.nodes[nid]['ipv4'],
-                                self.nodes[nid]['ipv6'],
-                                self.nodes[nid]['mac'],
-                                self.nid_map[nid]
-                            )    
+
+                    local_data = self.nodes[nid]
+                    
+                    logging.error("##### Hi5! %s | %s - %s", local_data, row, local_data['activity'])
+
+                    cursor.execute(
+                        '''UPDATE "Robot"
+                            SET ipv4=%s, ipv6=%s, mac=%s, state_id=%s
+                            WHERE robot_id=%s''',
+                        (
+                            local_data['ipv4'],
+                            local_data['ipv6'],
+                            local_data['mac'],
+                            local_data['activity'],
+                            self.nid_map[nid]
                         )
-                        logging.debug("Updated existing node with nid %s", (nid,))
+                    )
+                    logging.debug("Updated existing node with nid %s", (nid,))
                 self.conn.commit()
             else:
-                logging.warning('Table robot contained no entries')
-        except Error as e: # psycopg2.Error
-            logging.error('SQL error: %s' % (e,))
+                logging.warning('Table "Robot" contained no entries during update check.')
+
+        except Error as e:
+            logging.error('SQL error during update_existing_nodes: %s' % (e,))
             try:
                 self.conn.rollback()
-            except:
-                logging.error('SQL error: Rollback failed')
+            except Exception as rb_e:
+                logging.error('SQL rollback failed: %s' % (rb_e,))
         except Exception as e:
-            logging.error('Failed to update registered robots: %s' % (repr(e),))
+            logging.error('Unexpected error in update_existing_nodes: %s' % (repr(e),))
 
     def forward_batch(self):
-        tries = 5
-        while tries != 0:
-            if self.connect_db():
-                try:
-                    t = TimeUtil.get_timestamp()
-                    with self.conn.cursor() as cursor:
-                        self.register_new_nodes(cursor) # insert into table robot if necessary
-                        for nid in self.nodes.keys():
-                            if t - self.nodes[nid]['last'] < 30:
-                                cursor.execute('''INSERT INTO \"Status\" (robot_id, battery, cpu_1, point, orientation, last_heard)
-                                    VALUES (%s, %s, %s, %s, %s, %s)''', (
-                                        self.nid_map[nid],
-                                        self.nodes[nid]['battery'],
-                                        self.nodes[nid]['cpu'],
-                                        dumps(self.nodes[nid]['point']),
-                                        dumps(self.nodes[nid]['orientation']),
-                                        self.nodes[nid]['last'],
-                                    )
-                                )
-                                for neighbor in self.nodes[nid]['neighbors'].keys():
-                                    if neighbor in self.__nid_map.keys():
-                                        cursor.execute('''INSERT INTO \"Neighbor\" (robot_id, neighbor, strength)
-                                            VALUES (%s, %s, %s)''', (
-                                                self.__nid_map[nid],
-                                                self.__nid_map[neighbor],
-                                                self.nodes[nid]['neighbors'][neighbor],
-                                            )
-                                        )
-                            else:
-                                logging.info('Skipping node with nid %s during batch forward: Not heard from recently.', nid)
+        tries = DB_CONNECT_RETRIES
 
-                        self.conn.commit()
-                        self.update_existing_nodes(cursor) # update table robot if necessary
-                    break
-                except Error as e: # psycopg2.Error
-                    logging.error('SQL error: %s' % (e,))
-                    try:
-                        self.conn.rollback()
-                    except:
-                        logging.error('SQL error: Rollback failed')
-                    break
-                except Exception as e:
-                    logging.error('Error during batch forward: %s' % (e,))
-                    break
-            else:
+        while tries > 0:
+            if not self.connect_db():
                 tries -= 1
-                sleep(0.2)
+                logging.warning('DB connection failed. Retrying in %ss', DB_CONNECT_DELAY)
+                sleep(DB_CONNECT_DELAY)
+                continue
 
-    # timer callbacks
+            try:
+                t = TimeUtil.get_timestamp()
+                with self.conn.cursor() as cursor:
+                    self.register_new_nodes(cursor) # insert into table robot if necessary
+
+                    for nid, data in self.nodes.items():
+                        if nid not in self.__nid_map:
+                            continue
+
+                        # Check if data is fresh (within 30 seconds)
+                        if data['last'] and (t - data['last'] < DATA_STALENESS_CUTOFF):
+                            cursor.execute(
+                                '''INSERT INTO "Status"
+                                   (robot_id, battery, cpu_1, point, orientation, last_heard)
+                                   VALUES (%s, %s, %s, %s, %s, %s)''',
+                                (
+                                    self.__nid_map[nid],
+                                    data['battery'],
+                                    data['cpu'],
+                                    dumps(data['point']),
+                                    dumps(data['orientation']),
+                                    data['last'],
+                                )
+                            )
+
+                            for neigh, strength in data['neighbors'].items():
+                                if neigh in self.__nid_map:
+                                    cursor.execute(
+                                        '''INSERT INTO "Neighbor"
+                                           (robot_id, neighbor, strength)
+                                           VALUES (%s, %s, %s)''',
+                                        (
+                                            self.__nid_map[nid],
+                                            self.__nid_map[neigh],
+                                            strength,
+                                        )
+                                    )
+                        else:
+                            logging.info('Skipping node %s during batch forward: Not heard from recently.', nid)
+
+                    self.conn.commit()
+                    self.update_existing_nodes(cursor)
+                return
+
+            except Error as e: # specific psycopg2.Error handling
+                logging.error('SQL error during batch forward: %s' % (e,))
+                try:
+                    self.conn.rollback()
+                except Exception as rollback_err:
+                    logging.error('SQL error: Rollback failed: %s' % (rollback_err,))
+                return
+            except Exception as e:
+                logging.error('General error during batch forward: %s' % (e,))
+                return
+
+
     def batch_timer_callback(self):
-        if not self.conn or self.conn.closed:
-            logging.error('Connection status: closed')
+        # Instead of just checking and logging error, TRIGGER the reconnection logic
+        if not self.connect_db():
+            logging.error('Batch skipped: Database is down and reconnect failed.')
+            return
+
+        # If we reach here, connect_db() guaranteed us a live connection.
+        if not FORWARD_TO_DB:
+            self.forward_batch_test()
         else:
-            if not FORWARD_TO_DB:
-                self.forward_batch_test() # print
-            else:
-                self.forward_batch() # forward to DB
-            # print('Batch forwarded: %s' % (TimeUtil.get_datetime_f(),))
-            logging.info('Batch forwarded: %s' % (TimeUtil.get_datetime_f(),))
+            self.forward_batch()
+        # print('Batch forwarded: %s' % (TimeUtil.get_datetime_f(),))
+        logging.info('Batch forwarded: %s' % (TimeUtil.get_datetime_f(),))
 
     
     def check_nid(self, nid) -> bool: # override; allows all
@@ -249,6 +283,8 @@ class RobotStatusSub(BaseStatusSub):
     # subscription callbacks
     def subscription_callback(self, msg):
         if self.check_nid(msg.header.nid):
+            logging.error(msg)
+            logging.error(type(msg).__name__)
             self.nodes[msg.header.nid]['last'] = msg.header.time.sec
             match type(msg).__name__:
                 case 'RobotBattery':
@@ -257,28 +293,17 @@ class RobotStatusSub(BaseStatusSub):
                     self.nodes[msg.header.nid]['cpu'] = msg.data
                 case 'RobotActivity':
                     # check if activity_sub exists and if activity is legal
+                    logging.error("Activity subscription: %s, activity: %s, state_map keys: %s, nid: %s, nid_map keys: %s, state_map: %s",
+                        self.getSubscription('activity'),
+                        msg.activity,
+                        list(self.state_map.keys()),
+                        msg.header.nid,
+                        list(self.nid_map.keys()),
+                        self.__state_map[msg.activity])
+
                     if self.getSubscription('activity') and msg.activity in self.state_map.keys() and msg.header.nid in self.nid_map:
-                        # check if activity has changed
-                        if self.nodes[msg.header.nid]['activity'] != msg.activity:
-                            # if changed, update activity locally and in DB
-                            self.nodes[msg.header.nid]['activity'] = msg.activity
-                            if self.connect_db():
-                                try:
-                                    with self.conn.cursor() as cursor:
-                                        cursor.execute('''UPDATE \"Robot\"
-                                            SET state_id = %s
-                                            WHERE robot_id = %s
-                                            ''', (
-                                                    self.__state_map[msg.activity],
-                                                    self.__nid_map[msg.header.nid],
-                                                )
-                                            )
-                                except Error as e:
-                                    logging.error('Failed to update registered Robots: %s' % (e,))
-                                    try:
-                                        self.conn.rollback()
-                                    except:
-                                        logging.error('SQL error: Rollback failed')
+                        self.nodes[msg.header.nid]['activity'] = self.state_map[msg.activity]
+
                 case 'RobotPoint':
                     point = {'x': msg.x, 'y': msg.y, 'z': msg.z}
                     if self.validate_point(point):
@@ -312,25 +337,23 @@ class RobotStatusSub(BaseStatusSub):
 
 
 def main():
-    # rclpy starten
     rclpy.init()
-
-    # Node starten
     robot_status_sub = RobotStatusSub()
-    rclpy.spin(robot_status_sub)
-
-    if robot_status_sub.conn:
-        try:
-            robot_status_sub.conn.close()
-        except Exception as e:
-            print('Failed to close DB connection:', e)
-            logging.error('SQL error: Failed to close DB connection: %s', (e,))
     
-    # Node zerstören
-    robot_status_sub.destroy_node()
-    
-    # rclpy beenden
-    rclpy.shutdown()
+    try:
+        rclpy.spin(robot_status_sub)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if robot_status_sub.conn:
+            try:
+                robot_status_sub.conn.close()
+                logging.info('DB connection closed gracefully.')
+            except Exception as e:
+                logging.error(f'Failed to close DB connection: {e}')
+        
+        robot_status_sub.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":

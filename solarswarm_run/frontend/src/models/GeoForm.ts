@@ -1,16 +1,27 @@
 export enum FormType {
-    PolygonLine,
-    Circle,
-    Plane,
-    Sphere,
-    Cylinder,
-    Box
+    Marker = "Marker",
+    Point = "Point",
+    LineString = "LineString",
+    Polygon = "Polygon",
+    Circle = "Circle",
+    Sphere = "Sphere",
+    Plane = "Plane"
 }
 
 export interface GeoLocation {
-    lat: number,
-    lon: number,
-    height: number,
+    lon: number;
+    lat: number;
+    height: number;
+}
+
+export interface GeoForm {
+    id: string;
+    name: string;
+    type: FormType;
+    data: {
+        points: GeoLocation[];
+        radius?: number;
+    };
 }
 
 export interface RelativeLocation {
@@ -41,16 +52,5 @@ export interface CylinderForm extends ShapeForm {
 export interface FormData {
     points: Array<RelativeLocation | GeoLocation> | undefined
     shapeForm: Array<ShapeForm> | undefined
-}
-
-export interface GeoForm {
-    id: string
-    name: string
-    type: FormType
-    data: {
-        points: GeoLocation[]
-        shapeForm?: any
-        radius?: number   // <--- hinzufügen
-    }
 }
 

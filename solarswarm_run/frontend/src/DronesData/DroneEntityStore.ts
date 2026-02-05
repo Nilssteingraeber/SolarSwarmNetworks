@@ -19,26 +19,58 @@ import {
     Viewer,
     ExtrapolationType,
     PolylineDashMaterialProperty,
-    // Primitive API imports
     GeometryInstance,
     PolylineGeometry,
     PolylineColorAppearance,
     PointPrimitiveCollection,
-    Primitive
+    Primitive,
+    LinearApproximation,
+    ArcType
 } from 'cesium'
 
-import { useDroneHistoryStore } from './DroneHistoryStore'
+import { useDroneHistoryStore, initDBRead } from './DroneHistoryStore'
 import { useTimeStore } from '../stores/TimeStore'
 import type { Robot, RobotWithEntity } from '../models/Robot'
 
-const getDroneColor = (robot: Robot, currentTime: number) => {
-    const lastHeard = robot.last_heard || 0
-    const timeSinceLast = (currentTime - (lastHeard * 1000.0)) / 1000.0 / 1000.0
 
-    if (timeSinceLast < 5) return Color.GREEN
-    if (timeSinceLast < 7) return Color.YELLOW
-    if (timeSinceLast < 9) return Color.RED
-    return Color.GRAY
+const getDroneColor = (nid: string) => {
+    const historyStore = useDroneHistoryStore();
+    const timeStore = useTimeStore();
+
+    // 1. Access the history cache for this drone
+    const history = historyStore.cache.get(nid);
+    if (!history || history.length === 0) return Color.GRAY;
+
+    const currentTime = timeStore.currentTime;
+
+    // 2. Use our existing binary search to find the index closest to the playhead
+    // We assume findClosestIndex is exported or accessible here
+    const idx = historyStore.findClosestIndex(history, currentTime);
+    const closestEntry = history[idx];
+
+    // 3. Extract the timestamp from the actual history entry
+    const heardMs = closestEntry.data.last_heard ?? 0;
+
+    // 4. Unit-agnostic comparison
+    const nowMs = currentTime;
+    const actualHeardMs = heardMs;
+
+    // We take the ABSOLUTE difference. 
+    // If the playhead is at 10:00:00 and the closest stamp is 10:00:05, 
+    // it's still "5 second old" data in terms of accuracy.
+    const lagSeconds = Math.abs(nowMs - actualHeardMs) / 1000.0;
+
+    // Throttled Debug (Per drone, roughly every 2 seconds)
+    // if (Math.floor(nowMs) % 2000 < 20) {
+    //     console.log(`[Replay Status] ${nid} | Playhead: ${new Date(nowMs).toLocaleTimeString()} | Closest Stamp: ${new Date(actualHeardMs).toLocaleTimeString()} | Gap: ${lagSeconds.toFixed(1)}s`);
+    // }
+
+    // 5. Apply the requested thresholds
+    if (lagSeconds < 10) return Color.GREEN;
+    if (lagSeconds < 15) return Color.YELLOW;
+    if (lagSeconds < 25) return Color.RED;
+
+    return Color.GRAY;
 }
 
 export const useDroneEntityStore = defineStore('droneEntities', {
@@ -46,9 +78,9 @@ export const useDroneEntityStore = defineStore('droneEntities', {
         viewer: null as Viewer | null,
         entities: markRaw(new Map<string, Entity>()),
         robots: markRaw(new Map<string, Robot>()),
+        stateNames: new Map<number, string>(),
         connectionLines: markRaw(new Map<string, Entity>()),
-
-        // High-performance primitives
+        lastSyncTime: 0,
         _flightPathPrimitives: markRaw(new Map<string, Primitive>()),
         _hoverPointCollections: markRaw(new Map<string, PointPrimitiveCollection>())
     }),
@@ -78,133 +110,149 @@ export const useDroneEntityStore = defineStore('droneEntities', {
         },
 
         async syncEntitiesFromHistory() {
-            if (!this.viewer) return
-            const historyStore = useDroneHistoryStore()
-            const timeStore = useTimeStore()
-            const currentTimestamp = timeStore.currentTime
-            const windowMs = 5000
+            if (!this.viewer) return;
+            const historyStore = useDroneHistoryStore();
+            const timeStore = useTimeStore();
+            const currentTimestamp = timeStore.currentTime;
 
-            const dronesMap = await historyStore.getDronesInWindow(currentTimestamp, windowMs)
+            // 1. Detect Jump or Rewind (Discontinuity)
+            const timeDelta = currentTimestamp - this.lastSyncTime;
+            const isDiscontinuous = Math.abs(timeDelta) > 1500 || timeDelta < 0;
+            this.lastSyncTime = currentTimestamp;
 
-            this.viewer.entities.suspendEvents()
+            const dronesMap = await historyStore.getDronesInWindow(currentTimestamp, 5000);
+
+            this.viewer.entities.suspendEvents();
 
             const updatePromises = Array.from(dronesMap.entries()).map(async ([nid, robot]) => {
-                this.robots.set(nid, robot)
-                // Also ensure history is primed so we can draw paths immediately if selected
-                const entry = await historyStore.getSnapshotAt(nid, currentTimestamp, windowMs)
+                this.robots.set(nid, robot);
+
+
+                const entry = await historyStore.getSnapshotAt(nid, currentTimestamp, 2000);
+                const nextEntry = await this.getNextPointAfter(nid, currentTimestamp, 2000);
 
                 const useTime = entry
                     ? JulianDate.fromDate(new Date(entry.timestamp))
-                    : JulianDate.fromDate(new Date(currentTimestamp))
+                    : JulianDate.fromDate(new Date(currentTimestamp));
 
                 if (!this.entities.has(nid)) {
-                    if (robot.point) this._createEntity(robot, useTime)
+                    if (robot.point) this._createEntity(robot, useTime);
                 } else {
-                    this._updateEntity(robot, useTime)
-                }
-            })
+                    // Update current position
+                    this._updateEntity(robot, useTime, isDiscontinuous);
 
-            await Promise.all(updatePromises)
-            this.viewer.entities.resumeEvents()
+                    // Update next position (aiming)
+                    if (nextEntry) {
+                        const nextTime = JulianDate.fromDate(new Date(nextEntry.timestamp));
+                        this._updateEntity(nextEntry.data, nextTime, false);
+                    }
+                }
+            });
+
+            await Promise.all(updatePromises);
+            this.viewer.entities.resumeEvents();
         },
 
-        async drawFlightPath(nid: string, aroundTime?: number, entryCount: number = 50) {
-            if (!this.viewer) return
-            const historyStore = useDroneHistoryStore()
-            const timeStore = useTimeStore()
+        async getNextPointAfter(nid: string, timestamp: number, windowMs: number = 2000) {
+            const db = await initDBRead();
+            return new Promise<any>((resolve) => {
+                const tx = db.transaction('history', 'readonly');
+                const store = tx.objectStore('history');
+                const index = store.index('nid_timestamp');
 
-            // 1. Determine Time Window (TRAIL MODE: Past -> Now)
-            const currentTime = aroundTime ?? timeStore.currentTime
-            const windowMs = entryCount * 1000
+                const range = IDBKeyRange.bound([nid, timestamp + 1], [nid, timestamp + windowMs]);
+                const request = index.openCursor(range, "next");
 
-            // Load slightly more data than needed to ensure we have the start point
-            await historyStore.ensureDroneDataLoaded(nid, currentTime, windowMs + 5000)
+                request.onsuccess = (e: any) => {
+                    const cursor = e.target.result;
+                    resolve(cursor ? cursor.value : null);
+                };
+                request.onerror = () => resolve(null);
+            });
+        },
 
-            const history = historyStore.cache.get(nid)
-            if (!history || history.length === 0) return
+        async drawFlightPath(nid: string, aroundTime?: number) {
+            if (!this.viewer) return;
+            const historyStore = useDroneHistoryStore();
+            const timeStore = useTimeStore();
+            const currentTime = aroundTime ?? timeStore.currentTime;
 
-            // 2. Slice History (Trail Logic: [Now - Window] to [Now])
-            const startTs = currentTime - windowMs
-            const endTs = currentTime // Don't show future points in trail mode
+            // 1. Ensure data exists (unchanged)
+            // Reducing window to 2 minutes to keep search fast, we only draw 60s anyway
+            await historyStore.ensureDroneDataLoaded(nid, currentTime);
 
-            let startIdx = 0, endIdx = history.length - 1
-            while (startIdx < history.length && history[startIdx].timestamp < startTs) startIdx++
-            while (endIdx >= 0 && history[endIdx].timestamp > endTs) endIdx--
+            const history = historyStore.cache.get(nid);
+            if (!history || history.length === 0) return;
 
-            const entries = history.slice(startIdx, endIdx + 1)
+            // 2. SMART SLICING (Fixes "Short Line" and "Performance")
+            // Instead of .filter().slice(-64), we find the start/end indices mathematically.
 
-            // Need at least 1 point to draw a line to the drone
-            if (entries.length < 1) return
+            // Find the index of "Now"
+            const endIndex = historyStore.findClosestIndex(history, currentTime);
 
-            // --- CLEANUP ---
-            this.removeFlightPathLines(nid)
+            // Walk backwards to find "60 seconds ago"
+            // (Heuristic optimization: average drone rate is usually consistent, 
+            // but a while-loop is safest and fast enough for <1000 points)
+            let startIndex = endIndex;
+            const startTime = currentTime - 60000; // 60 Seconds Tail
 
-            // --- BUILD GEOMETRY ---
-            const positions: Cartesian3[] = []
-            const colors: Color[] = []
-            const hoverPoints: Cartesian3[] = []
+            while (startIndex > 0 && history[startIndex].timestamp > startTime) {
+                startIndex--;
+            }
 
-            const HOVER_RADIUS = 0.25
-            const MIN_HOVER_DURATION_MS = 2000
-            let clusterStartIdx = 0
-            let clusterCenter: Cartesian3 | null = null
+            // Extract only the relevant window
+            const entries = history.slice(startIndex, endIndex + 1);
 
-            // 3. Process History Points
+            // Need at least 2 points to make a line
+            if (entries.length < 2) {
+                this.removeFlightPathLines(nid); // Cleanup if empty
+                return;
+            }
+
+            // 3. Prepare Geometry Arrays
+            const positions: Cartesian3[] = [];
+            const colors: Color[] = [];
+            const dots: Cartesian3[] = [];
+
             for (let i = 0; i < entries.length; i++) {
-                const p = entries[i].data.point
-                if (!p) continue
+                const p = entries[i].data.point;
+                if (!p) continue;
 
-                const pos = Cartesian3.fromDegrees(p.lon, p.lat, p.alt ?? 150)
-                positions.push(pos)
+                const pos = Cartesian3.fromDegrees(p.lon, p.lat, p.alt ?? 150);
+                positions.push(pos);
 
-                // --- GRADIENT COLOR ---
-                // 0.0 (Oldest) -> 1.0 (Latest History Point)
-                const progress = i / (entries.length > 1 ? entries.length - 1 : 1)
+                // Optional: Only draw dots every 5th point to save FPS
+                if (i % 5 === 0) dots.push(pos);
 
-                // Hue: Blue (0.65) -> Red (0.0)
-                const hue = 0.65 * (1.0 - progress)
-                // Lightness: Fades tail to black (0.0 -> 0.5)
-                const lightness = 0.5 * Math.pow(progress, 0.4)
+                // Color Calculation (Your original Rainbow Logic)
+                // Normalize "age" based on the actual time window (0 to 60s)
+                const ageMs = currentTime - entries[i].timestamp;
+                const progress = 1.0 - (ageMs / 60000); // 1.0 = Now, 0.0 = 60s ago
 
-                colors.push(Color.fromHsl(hue, 1.0, lightness, 1.0))
+                // Clamp progress to 0-1 just in case
+                const safeProgress = Math.max(0, Math.min(1, progress));
 
-                // --- HOVER LOGIC ---
-                if (i === 0) {
-                    clusterCenter = pos
-                    clusterStartIdx = 0
-                } else if (clusterCenter) {
-                    const dist = Cartesian3.distance(pos, clusterCenter)
-                    if (dist > HOVER_RADIUS) {
-                        const duration = entries[i - 1].timestamp - entries[clusterStartIdx].timestamp
-                        if (duration > MIN_HOVER_DURATION_MS) {
-                            hoverPoints.push(clusterCenter)
-                        }
-                        clusterStartIdx = i
-                        clusterCenter = pos
-                    }
-                }
+                const hue = 0.65 * (1.0 - safeProgress); // Blue -> Red
+                const lightness = 0.5 * Math.pow(safeProgress, 0.4);
+                colors.push(Color.fromHsl(hue, 1.0, lightness, 1.0));
             }
 
-            // 4. [CRITICAL FIX] Add the "Connector" Point
-            // The history is discrete (e.g. every 100ms). The drone is interpolated (e.g. +50ms).
-            // We must add the drone's *exact* current position to the line so it touches the model.
-            const entity = this.entities.get(nid)
+            // Add the "Live" tip (Current interpolated position)
+            const entity = this.entities.get(nid);
             if (entity && entity.position) {
-                const nowJulian = JulianDate.fromDate(new Date(currentTime))
-                const currentPos = entity.position.getValue(nowJulian)
-
+                const nowJulian = JulianDate.fromDate(new Date(currentTime));
+                const currentPos = entity.position.getValue(nowJulian);
                 if (currentPos) {
-                    const lastHistPos = positions[positions.length - 1]
-                    // Only add if we have moved slightly from the last history tick
-                    if (Cartesian3.distance(currentPos, lastHistPos) > 0.01) {
-                        positions.push(currentPos)
-                        // The tip of the line is fully Red and Bright
-                        colors.push(Color.fromHsl(0.0, 1.0, 0.5, 1.0))
-                    }
+                    positions.push(currentPos);
+                    colors.push(Color.fromHsl(0.0, 1.0, 0.5, 1.0)); // Bright Red Tip
                 }
             }
 
-            // --- RENDER PATH ---
+            // 4. DRAWING (The Primitive Swap)
+            // We remove the old one and add the new one. 
+            // Doing this 60fps is bad. Doing it 10fps is fine.
+            this.removeFlightPathLines(nid);
+
             if (positions.length >= 2) {
                 const linePrimitive = this.viewer.scene.primitives.add(new Primitive({
                     geometryInstances: new GeometryInstance({
@@ -213,58 +261,59 @@ export const useDroneEntityStore = defineStore('droneEntities', {
                             width: 4.0,
                             vertexFormat: PolylineColorAppearance.VERTEX_FORMAT,
                             colors: colors,
-                            colorsPerVertex: true
+                            colorsPerVertex: true,
+                            arcType: ArcType.GEODESIC // Smooths long lines
                         })
                     }),
                     appearance: new PolylineColorAppearance({ translucent: false }),
-                    asynchronous: false
-                }))
-                this._flightPathPrimitives.set(nid, markRaw(linePrimitive))
+                    asynchronous: false // Keep false to prevent flickering on rapid updates
+                }));
+                this._flightPathPrimitives.set(nid, markRaw(linePrimitive));
             }
 
-            // --- RENDER HOVER POINTS ---
-            if (hoverPoints.length > 0) {
-                const pointCollection = this.viewer.scene.primitives.add(new PointPrimitiveCollection())
-                hoverPoints.forEach(pt => {
+            // Draw Dots (Optional: Consider removing if still laggy)
+            if (dots.length > 0) {
+                const pointCollection = this.viewer.scene.primitives.add(new PointPrimitiveCollection());
+                dots.forEach(pt => {
                     pointCollection.add({
                         position: pt,
-                        color: Color.WHITE.withAlpha(0.9),
-                        outlineColor: Color.BLACK,
-                        outlineWidth: 2,
-                        pixelSize: 6,
+                        color: Color.WHITE.withAlpha(0.6),
+                        pixelSize: 4,
                         disableDepthTestDistance: Number.POSITIVE_INFINITY
-                    })
-                })
-                this._hoverPointCollections.set(nid, markRaw(pointCollection))
+                    });
+                });
+                this._hoverPointCollections.set(nid, markRaw(pointCollection));
             }
         },
 
         removeFlightPathLines(nid: string) {
-            if (!this.viewer) return
-
-            const linePrim = this._flightPathPrimitives.get(nid)
+            if (!this.viewer) return;
+            const linePrim = this._flightPathPrimitives.get(nid);
             if (linePrim) {
-                this.viewer.scene.primitives.remove(linePrim)
-                this._flightPathPrimitives.delete(nid)
+                this.viewer.scene.primitives.remove(linePrim);
+                this._flightPathPrimitives.delete(nid);
             }
-
-            const pointColl = this._hoverPointCollections.get(nid)
+            const pointColl = this._hoverPointCollections.get(nid);
             if (pointColl) {
-                this.viewer.scene.primitives.remove(pointColl)
-                this._hoverPointCollections.delete(nid)
+                this.viewer.scene.primitives.remove(pointColl);
+                this._hoverPointCollections.delete(nid);
             }
         },
 
         _createEntity(robot: Robot, recordedTime: JulianDate) {
-            if (!this.viewer || !robot.point) return
+            if (!this.viewer || !robot.point) return;
 
-            const { lon, lat, alt } = robot.point
-            const pos = Cartesian3.fromDegrees(lon, lat, alt ?? 150)
+            const { lon, lat, alt } = robot.point;
+            const pos = Cartesian3.fromDegrees(lon, lat, alt ?? 150);
 
-            const sampled = new SampledPositionProperty()
-            sampled.forwardExtrapolationType = ExtrapolationType.HOLD
-            sampled.backwardExtrapolationType = ExtrapolationType.HOLD
-            sampled.addSample(recordedTime, pos)
+            const sampled = new SampledPositionProperty();
+            sampled.forwardExtrapolationType = ExtrapolationType.HOLD;
+            sampled.backwardExtrapolationType = ExtrapolationType.HOLD;
+            sampled.setInterpolationOptions({
+                interpolationDegree: 1, // Snappy linear movement
+                interpolationAlgorithm: LinearApproximation
+            });
+            sampled.addSample(recordedTime, pos);
 
             const ent = this.viewer.entities.add({
                 id: robot.nid,
@@ -272,7 +321,7 @@ export const useDroneEntityStore = defineStore('droneEntities', {
                 orientation: new VelocityOrientationProperty(sampled),
                 model: { uri: nucModel, scale: 1.2 },
                 label: {
-                    text: robot.display_name ?? robot.nid,
+                    text: this.stateNames.get(robot.state_id ?? -1) ?? ("No State") + "\n" + (robot.display_name ?? robot.nid),
                     font: '14px monospace',
                     style: LabelStyle.FILL_AND_OUTLINE,
                     outlineWidth: 3,
@@ -282,7 +331,7 @@ export const useDroneEntityStore = defineStore('droneEntities', {
                 },
                 point: {
                     pixelSize: 12,
-                    color: new CallbackProperty(() => getDroneColor(robot, useTimeStore().currentTime), false),
+                    color: new CallbackProperty(() => getDroneColor(robot.nid), false),
                     outlineColor: Color.BLACK,
                     outlineWidth: 2,
                     disableDepthTestDistance: Number.POSITIVE_INFINITY
@@ -291,18 +340,18 @@ export const useDroneEntityStore = defineStore('droneEntities', {
                     isSelectable: new ConstantProperty(true),
                     droneData: new ConstantProperty(robot)
                 }
-            })
-            this.entities.set(robot.nid, markRaw(ent))
+            });
+            this.entities.set(robot.nid, markRaw(ent));
 
             const lineEnt = this.viewer.entities.add({
                 id: `${robot.nid}-line`,
                 polyline: {
                     positions: new CallbackProperty((time) => {
-                        const dronePos = sampled.getValue(time)
-                        if (!dronePos) return []
-                        const carto = Cartographic.fromCartesian(dronePos)
-                        const groundPos = Cartesian3.fromRadians(carto.longitude, carto.latitude, 0)
-                        return [dronePos, groundPos]
+                        const dronePos = sampled.getValue(time);
+                        if (!dronePos) return [];
+                        const carto = Cartographic.fromCartesian(dronePos);
+                        const groundPos = Cartesian3.fromRadians(carto.longitude, carto.latitude, 0);
+                        return [dronePos, groundPos];
                     }, false),
                     width: 2,
                     material: new PolylineDashMaterialProperty({
@@ -310,38 +359,65 @@ export const useDroneEntityStore = defineStore('droneEntities', {
                         dashLength: 8
                     })
                 }
-            })
-            this.connectionLines.set(`${robot.nid}-line`, markRaw(lineEnt))
+            });
+            this.connectionLines.set(`${robot.nid}-line`, markRaw(lineEnt));
         },
 
-        _updateEntity(robot: Robot, recordedTime: JulianDate) {
-            const ent = this.entities.get(robot.nid)
-            if (!ent || !robot.point) return
-
-            const { lon, lat, alt } = robot.point
-            const newPos = Cartesian3.fromDegrees(lon, lat, alt ?? 150)
+        _updateEntity(robot: Robot, recordedTime: JulianDate, isDiscontinuous: boolean) {
+            const ent = this.entities.get(robot.nid);
+            if (!ent || !robot.point) return;
 
             if (ent.position instanceof SampledPositionProperty) {
-                ent.position.addSample(recordedTime, newPos)
+                // Wipe buffers on jump to prevent "warp lines"
+                if (isDiscontinuous) {
+                    // @ts-ignore
+                    ent.position._property._times = [];
+                    // @ts-ignore
+                    ent.position._property._values = [];
+                }
+
+                // @ts-ignore
+                const times = ent.position._property._times;
+                const lastSampleTime = times && times.length > 0 ? times[times.length - 1] : null;
+
+                if (!lastSampleTime || JulianDate.compare(recordedTime, lastSampleTime) > 0) {
+                    const newPos = Cartesian3.fromDegrees(robot.point.lon, robot.point.lat, robot.point.alt ?? 150);
+                    ent.position.addSample(recordedTime, newPos);
+                }
             }
-            this.robots.set(robot.nid, robot)
+
+            this.robots.set(robot.nid, robot);
             if (ent.properties && ent.properties.droneData) {
-                ent.properties.droneData.setValue(robot)
+                ent.properties.droneData.setValue(robot);
             }
         },
 
         clear() {
             if (this.viewer) {
-                this.entities.forEach(ent => this.viewer!.entities.remove(ent))
-                this.connectionLines.forEach(line => this.viewer!.entities.remove(line))
-                this._flightPathPrimitives.forEach(prim => this.viewer!.scene.primitives.remove(prim))
-                this._hoverPointCollections.forEach(coll => this.viewer!.scene.primitives.remove(coll))
+                this.entities.forEach(ent => this.viewer!.entities.remove(ent));
+                this.connectionLines.forEach(line => this.viewer!.entities.remove(line));
+                this._flightPathPrimitives.forEach(prim => this.viewer!.scene.primitives.remove(prim));
+                this._hoverPointCollections.forEach(coll => this.viewer!.scene.primitives.remove(coll));
             }
-            this.entities.clear()
-            this.robots.clear()
-            this.connectionLines.clear()
-            this._flightPathPrimitives.clear()
-            this._hoverPointCollections.clear()
+            this.entities.clear();
+            this.robots.clear();
+            this.connectionLines.clear();
+            this._flightPathPrimitives.clear();
+            this._hoverPointCollections.clear();
+        },
+
+        setStateNames(input: Map<number, string> | Record<string, string>) {
+            this.stateNames.clear()
+
+            if (input instanceof Map) {
+                for (const [k, v] of input) {
+                    this.stateNames.set(k, v)
+                }
+            } else {
+                for (const [k, v] of Object.entries(input)) {
+                    this.stateNames.set(Number(k), v)
+                }
+            }
         }
     }
-})
+});

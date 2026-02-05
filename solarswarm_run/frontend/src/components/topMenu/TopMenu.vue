@@ -7,7 +7,10 @@ import {
     Cartesian2,
     defined,
     ScreenSpaceEventType,
-    HeadingPitchRange
+    HeadingPitchRange,
+    Cartesian3,
+    ConstantProperty,
+    Matrix4
 } from 'cesium'
 
 import {
@@ -39,7 +42,12 @@ const geoStore = useGeoToolsStore()
 const { isOpen: isGeoToolsOpen } = storeToRefs(geoStore)
 
 const droneHistoryStore = useDroneHistoryStore()
+const timeStore = useTimeStore()
+
 const settingsStore = useSettingsStore()
+
+// === Download ===
+const fileInput = ref<HTMLInputElement | null>(null)
 
 // === UI state ===
 const showDroneList = ref(false)
@@ -50,9 +58,10 @@ const searchQuery = ref('')
 const isAnyMenuOpen = computed(() => viewedRobot?.value || isGeoToolsOpen.value)
 const isNodeMenuOpen = computed(() => viewedRobot?.value)
 
-const allDrones = computed(() => droneEntityStore.getRobots ?? [])
+const allDrones = computed(() => { return droneEntityStore.getRobots ?? [] })
 
 const filteredDrones = computed(() => {
+    console.log(allDrones.value)
     const q = searchQuery.value.trim().toLowerCase()
     if (!q) return allDrones.value
 
@@ -62,7 +71,8 @@ const filteredDrones = computed(() => {
     )
 })
 
-const dronesAmount = computed(() => droneHistoryStore.activeRobotCount)
+
+const dronesAmount = computed(() => droneHistoryStore.knownNids.size)
 
 const mapIconName = computed(() =>
     settingsStore.getShow3dMesh() ? 'ri-map-2-fill' : 'ri-map-2-line'
@@ -71,6 +81,33 @@ const mapIconName = computed(() =>
 // === Actions ===
 const toggleShow3dmesh = () =>
     settingsStore.setShow3dMesh(!settingsStore.getShow3dMesh())
+
+const downloadData = () => {
+    droneHistoryStore.exportDatabaseToFile()
+}
+
+// This function "clicks" the hidden input for you
+const triggerFilePicker = () => {
+    fileInput.value?.click()
+}
+
+// This handles the file once you pick it (your existing logic)
+const handleFileImport = async (event: Event) => {
+    const target = event.target as HTMLInputElement
+    const file = target.files?.[0]
+    if (!file) return
+
+    try {
+        await droneHistoryStore.importDatabaseFromFile(file)
+        alert('History data imported successfully!')
+    } catch (err) {
+        console.error('Import failed:', err)
+        alert('Failed to import file. Ensure it is a valid JSON history export.')
+    } finally {
+        // Clear the input so you can upload the same file again later if needed
+        target.value = ''
+    }
+}
 
 const toggleOpenGeoTools = () => {
     geoStore.toggleOpen()
@@ -82,46 +119,68 @@ const toggleOpenGeoTools = () => {
 }
 
 const focusDrone = (nid: string) => {
-    showDroneList.value = false
-    searchQuery.value = ''
+    showDroneList.value = false;
+    searchQuery.value = '';
 
-    const v = viewer.value
-    if (!v) return
+    const v = viewer.value;
+    if (!v) return;
 
-    const drone = droneEntityStore.getRobot(nid) as RobotWithEntity | undefined
-    if (!drone?.entity) return
+    const drone = droneEntityStore.getRobot(nid) as RobotWithEntity | undefined;
+    if (!drone?.entity) return;
 
-    droneEntityStore.removeFlightPathLines(viewedDroneStore.viewedNid ?? '')
-    viewedDroneStore.setDrone(null, nid)
-    geoStore.setOpen(false)
+    // 1. Cleanup and State Sync
+    droneEntityStore.removeFlightPathLines(viewedDroneStore.viewedNid ?? '');
+    viewedDroneStore.setDrone(null, nid);
+    geoStore.setOpen(false);
 
-    droneEntityStore.drawFlightPath(nid, useTimeStore().currentTime, 500)
+    // 2. Define the Tracking Offset
+    // This prevents the "Extreme Zoom." 
+    // We calculate a Cartesian offset that represents: 
+    // Heading 0 (North), Pitch -35 deg, Range 150m
+    const range = 150;
+    const pitch = degToRad(-35);
 
-    // --- Fly to drone with controlled zoom + north-facing orientation ---
+    // Convert spherical offset (Heading/Pitch/Range) to Cartesian for viewFrom
+    // x = East/West, y = North/South, z = Up/Down
+    const yOffset = -range * Math.cos(pitch); // Sit behind (South) the drone
+    const zOffset = -range * Math.sin(pitch); // Sit above the drone
+    const trackingOffset = new Cartesian3(0, yOffset, zOffset);
+
+    // Set viewFrom so trackedEntity knows exactly where to stay
+    drone.entity.viewFrom = new ConstantProperty(trackingOffset);
+
+    // 3. Smooth Flight to the Drone
     v.flyTo(drone.entity, {
-        duration: 0.35,
+        duration: 1.5, // 1.5s is the "Goldilocks" zone for smooth UI transitions
         offset: new HeadingPitchRange(
-            0,                              // heading = north
-            degToRad(-35),     // look down
-            120                             // distance in meters (tweak this)
+            0,            // Heading: North
+            pitch,        // Pitch: -35 degrees
+            range         // Range: 150 meters
         )
     }).then(() => {
-        // Enable tracking
-        v.trackedEntity = toRaw(drone.entity)
+        // 4. Enable Tracking
+        // Because we set viewFrom above, this will NOT jump or zoom in
+        v.trackedEntity = toRaw(drone.entity);
+    });
+};
 
-        // --- Force camera back to north (tracking overrides orientation) ---
-        const pos = drone?.entity?.position?.getValue(v.clock.currentTime)
-        if (!pos) return
 
-        v.camera.setView({
-            destination: v.camera.position,
-            orientation: {
-                heading: 0,                               // north
-                pitch: v.camera.pitch,
-                roll: 0
-            }
-        })
-    })
+const getStatusColor = (nid: string) => {
+    const history = droneHistoryStore.cache.get(nid);
+    if (!history || history.length === 0) return 'gray';
+    const currentTime = timeStore.currentTime;
+    const idx = droneHistoryStore.findLastIndexBefore(history, currentTime);
+    if (idx === -1) return '#808080';
+
+    const pastEntry = history[idx];
+
+    const lagSeconds = (currentTime - (history[idx]?.data?.last_heard ?? Number.MAX_SAFE_INTEGER)) / 1000.0;
+
+    if (lagSeconds < 10) return '#008000';
+    if (lagSeconds < 15) return '#ffff00';
+    if (lagSeconds < 20) return '#ff0000';
+
+    return '#808080';
 }
 
 
@@ -159,6 +218,7 @@ function detachDroneSelector() {
 
 watch(viewer, v => v ? attachDroneSelector(v) : detachDroneSelector(), { immediate: true })
 onUnmounted(detachDroneSelector)
+
 </script>
 
 
@@ -171,10 +231,10 @@ onUnmounted(detachDroneSelector)
                 </MDBCol>
 
                 <MDBCol class="col-auto menu mx-3 d-flex flex-column align-items-center clickable">
-                    <MDBRow class="my-2 w-100">
-                        <div class="input-group px-0">
+                    <MDBRow>
+                        <MDBCol class="input-group ps-1 align-items-center">
                             <div class="form-outline search-outline-fix">
-                                <input type="text" id="searchForm" class="form-control text-input-layer h-100"
+                                <input type="text" id="searchForm" class="form-control text-input-layer"
                                     v-model="searchQuery" placeholder="Search drones…" @focus="showDroneList = true"
                                     @focusout="showDroneList = false" />
                             </div>
@@ -190,12 +250,15 @@ onUnmounted(detachDroneSelector)
                                     class="icon icon-button ps-0 pe-2" />
 
                             </button>
-                        </div>
+                        </MDBCol>
                     </MDBRow>
 
                     <transition name="expand-fade">
                         <MDBRow class="w-100 px-0" v-if="showDroneList">
                             <MDBCol class="drone-list px-2">
+                                <div v-if="filteredDrones.length === 0" class="p-3 text-center">
+                                    {{ searchQuery ? 'Keine Drohnen gefunden' : 'Lade Drohnen...' }}
+                                </div>
                                 <MDBRow v-for="d in [...filteredDrones]" :key="d.robot.nid"
                                     @click="focusDrone(d.robot.nid)"
                                     class="p-1 px-0 cursor-pointer drone-entry d-flex align-items-center input-layer my-2">
@@ -209,6 +272,10 @@ onUnmounted(detachDroneSelector)
                                             {{ d.robot.display_name ?? d.robot.nid }}
                                         </span>
                                     </MDBCol>
+                                    <MDBCol class="col-auto pe-3">
+                                        <div class="status-dot"
+                                            :style="{ backgroundColor: getStatusColor(d.robot.nid) }"></div>
+                                    </MDBCol>
                                 </MDBRow>
 
                             </MDBCol>
@@ -219,7 +286,7 @@ onUnmounted(detachDroneSelector)
                 <MDBCol class="col-auto menu mx-3 p-1 d-flex align-items-center clickable">
                     <button type="button" class="icon-button" @click="toggleMapFocus">
                         <OhVueIcon :name="isScrolledDown ? 'bi-chevron-double-up' : 'bi-chevron-double-down'"
-                            scale="1.5" class="icon" />
+                            scale="1.33" class="icon" />
                     </button>
                 </MDBCol>
 
@@ -235,6 +302,22 @@ onUnmounted(detachDroneSelector)
                         <OhVueIcon :name="mapIconName" scale="1.33" class="icon" />
                     </button>
                 </MDBCol>
+
+                <MDBCol class="col-auto menu mx-3 p-1 d-flex align-items-center clickable">
+                    <button type="button" class="icon-button d-flex align-items-center gap-2" @click="downloadData">
+                        <OhVueIcon name="io-save-sharp" scale="1.33" class="icon" />
+                    </button>
+                </MDBCol>
+
+                <MDBCol class="col-auto menu mx-3 p-1 d-flex align-items-center clickable">
+                    <button type="button" class="icon-button d-flex align-items-center gap-2"
+                        @click="triggerFilePicker">
+                        <OhVueIcon name="md-drivefolderupload-round" scale="1.33" class="icon" />
+                    </button>
+                </MDBCol>
+
+                <input type="file" ref="fileInput" accept=".json" style="display: none" @change="handleFileImport" />
+
             </MDBRow>
         </MDBCol>
 
@@ -245,6 +328,9 @@ onUnmounted(detachDroneSelector)
                     key="side-content" />
             </transition>
         </MDBCol>
+
+
+
     </MDBRow>
 </template>
 
@@ -325,14 +411,12 @@ onUnmounted(detachDroneSelector)
 }
 
 .search-button-fix {
-    margin-right: -2px;
     border-top-right-radius: 8px !important;
     border-bottom-right-radius: 8px !important;
 }
 
 .search-outline-fix {
     border: 1px rgba(92, 92, 92, 0.555) solid;
-    margin-left: -5px;
     border-radius: 8px 0 0 8px;
 }
 
@@ -481,5 +565,52 @@ onUnmounted(detachDroneSelector)
 /* Optional: subtle hover polish */
 .drone-entry:hover .drone-name {
     text-decoration: none;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* 🟢 Online: Subtle Glow */
+.status-dot[style*="background-color: rgb(0, 255, 0)"],
+.status-dot[style*="background-color: #00ff00"] {
+    box-shadow: 0 0 8px #0080007a, 0 0 2px #008000;
+}
+
+/* 🟡 Warning: No pulse, just yellow */
+.status-dot[style*="background-color: #ffff00"] {
+    box-shadow: 0 0 4px rgba(255, 255, 0, 0.4);
+}
+
+/* 🔴 Critical: Pulse Animation */
+@keyframes status-pulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0px rgba(255, 0, 0, 0.7);
+    }
+
+    50% {
+        transform: scale(1.2);
+        box-shadow: 0 0 10px rgba(255, 0, 0, 0.9);
+    }
+
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0px rgba(255, 0, 0, 0.7);
+    }
+}
+
+.status-dot[style*="background-color: #ff0000"] {
+    animation: status-pulse 1.5s infinite ease-in-out;
+}
+
+/* ⚪ Stale: Flat gray */
+.status-dot[style*="background-color: gray"] {
+    box-shadow: none;
+    opacity: 0.6;
 }
 </style>

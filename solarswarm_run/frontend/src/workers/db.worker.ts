@@ -1,48 +1,118 @@
 // src/workers/db.worker.ts
 
-let db: IDBDatabase | null = null;
+let _db: IDBDatabase | null = null;
 
-const initDB = (): Promise<IDBDatabase> => {
-    if (db) return Promise.resolve(db);
+async function initDB(): Promise<IDBDatabase> {
+    // If we have a healthy connection, return it
+    if (_db) return _db;
+
     return new Promise((resolve, reject) => {
-        // CRITICAL: Must be Version 2 to match Store
-        const request = indexedDB.open('DroneHistoryDB', 2);
+        // Increment version to trigger onupgradeneeded for new stores
+        const req = indexedDB.open('DroneHistoryDB', 5);
 
-        request.onupgradeneeded = (e) => {
-            const dbRes = (e.target as IDBOpenDBRequest).result;
-            // CRITICAL: Must use 'history' to match Store
-            if (!dbRes.objectStoreNames.contains('history')) {
-                const store = dbRes.createObjectStore('history', { keyPath: ['nid', 'timestamp'] });
+        req.onupgradeneeded = (e: any) => {
+            const db = e.target.result;
+
+            // 1. History Store
+            if (!db.objectStoreNames.contains('history')) {
+                const store = db.createObjectStore('history', { keyPath: ['nid', 'timestamp'] });
                 store.createIndex('nid_timestamp', ['nid', 'timestamp']);
             }
+
+            // 2. Geo Shapes Store
+            if (!db.objectStoreNames.contains('geo_shapes')) {
+                db.createObjectStore('geo_shapes', { keyPath: 'id' });
+            }
         };
-        request.onsuccess = () => {
-            db = request.result;
-            resolve(db);
+
+        req.onsuccess = () => {
+            _db = req.result;
+
+            _db.onclose = () => { _db = null; };
+            _db.onversionchange = () => {
+                _db?.close();
+                _db = null;
+            };
+
+            resolve(_db);
         };
-        request.onerror = () => reject(request.error);
+        req.onerror = (e) => reject(e);
     });
-};
+}
+
+const CHUNK_SIZE = 1000;
 
 self.onmessage = async (e: MessageEvent) => {
     const { type, payload } = e.data;
 
-    if (type === 'WRITE_BATCH') {
-        try {
-            const database = await initDB();
-            // CRITICAL: Must write to 'history'
-            const tx = database.transaction('history', 'readwrite');
-            const store = tx.objectStore('history');
+    try {
+        const db = await initDB();
 
-            payload.forEach((entry: any) => {
-                store.put(entry);
-            });
+        switch (type) {
+            case 'WRITE_BATCH':
+                try {
+                    for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
+                        const chunk = payload.slice(i, i + CHUNK_SIZE);
 
-            tx.oncomplete = () => postMessage({ type: 'WRITE_COMPLETE' });
-            tx.onerror = (err) => console.error("Worker DB Transaction Error", err);
-        } catch (error) {
-            console.error("Worker Error", error);
+                        await new Promise<void>((resolve, reject) => {
+                            const tx = db.transaction('history', 'readwrite');
+                            const store = tx.objectStore('history');
+
+                            chunk.forEach((entry: any) => store.put(entry));
+
+                            tx.oncomplete = () => resolve();
+                            tx.onerror = (err) => reject(err);
+                            tx.onabort = () => reject(new Error("Transaction Aborted"));
+                        });
+
+                        const progress = Math.round(((i + chunk.length) / payload.length) * 100);
+                        postMessage({ type: 'WRITE_PROGRESS', payload: progress });
+                    }
+                    postMessage({ type: 'WRITE_COMPLETE' });
+                } catch (error: any) {
+                    _db = null;
+                    const msg = error?.message || String(error);
+                    postMessage({ type: 'WRITE_ERROR', payload: msg });
+                }
+                break;
+
+            case 'SAVE_SHAPE': {
+                const tx = db.transaction('geo_shapes', 'readwrite');
+                tx.objectStore('geo_shapes').put(payload);
+                break;
+            }
+
+            case 'DELETE_SHAPE': {
+                const tx = db.transaction('geo_shapes', 'readwrite');
+                tx.objectStore('geo_shapes').delete(payload);
+                break;
+            }
+
+            case 'CLEAR_SHAPES': {
+                const tx = db.transaction('geo_shapes', 'readwrite');
+                tx.objectStore('geo_shapes').clear();
+                break;
+            }
+
+            case 'GET_ALL_SHAPES': {
+                const tx = db.transaction('geo_shapes', 'readonly');
+                const req = tx.objectStore('geo_shapes').getAll();
+                req.onsuccess = () => {
+                    postMessage({ type: 'ALL_SHAPES_RESULT', payload: req.result });
+                };
+                req.onerror = (err) => {
+                    throw err;
+                };
+                break;
+            }
         }
+    } catch (error: any) {
+        _db = null;
+        console.error("Worker Global Error:", error);
+
+        // Ensure the error sent to main thread is a plain string/object
+        const errorMessage = error?.message || String(error);
+        postMessage({ type: 'WORKER_ERROR', payload: errorMessage });
     }
 };
 

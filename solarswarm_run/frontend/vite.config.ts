@@ -8,7 +8,6 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 export default defineConfig({
   plugins: [
     vue({ ...templateCompilerOptions }),
-    vueDevTools(),
   ],
 
   assetsInclude: ["**/*.glb"],

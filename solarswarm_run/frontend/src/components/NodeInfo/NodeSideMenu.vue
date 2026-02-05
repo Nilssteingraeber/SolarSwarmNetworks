@@ -29,7 +29,6 @@ const batteryIconColors = ["", "red", "yellow", "green", "green"]
 const wifiIconNames = ["bi-wifi", "bi-wifi-2", "bi-wifi-1", "bi-wifi-off"]
 const wifiIconColors = ["green", "yellow", "orange", "red"]
 
-
 const wifiLevelStatus = computed(() => {
 
     // 1. Time-Since-Last Check (Critical Disconnect)
@@ -66,12 +65,7 @@ const wifiLevelStatus = computed(() => {
 
 const currentTimeString = computed(() => {
     if (!viewedRobot?.value?.last_heard) return "Never"
-
-    const date = new Date(viewedRobot?.value?.last_heard);
-    const hours = String(date.getHours()).padStart(2, '0')
-    const minutes = String(date.getMinutes()).padStart(2, '0')
-    const seconds = String(date.getSeconds()).padStart(2, '0')
-    return `${hours}:${minutes}:${seconds}`
+    return new Date(viewedRobot?.value.last_heard)
 })
 
 
@@ -93,7 +87,6 @@ const currentBatteryStatus = computed(() => {
 
 
 const batteryLevelText = computed(() => {
-    console.log(viewedRobot.value?.point?.lat)
     if (viewedRobot?.value?.battery && viewedRobot?.value?.battery.toString() === "-1") {
         return "?"
     }
@@ -133,7 +126,8 @@ watch(
 
         servicesLoading.value = true
         try {
-            const data = await dronesPollingService.value.fetchServicesList(newNid)
+            const data = await dronesPollingService?.value?.fetchServicesList(newNid)
+            if (!data) return
             interfaceStore.set(newNid, data)
             servicesRef.value = data
         } catch (err) {

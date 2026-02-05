@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, shallowRef } from 'vue'
+import { ref, onMounted, onUnmounted, shallowRef, computed } from 'vue'
 import * as d3 from 'd3'
 import { useDroneHistoryStore } from '../DronesData/DroneHistoryStore'
 import type { Robot } from '../models/Robot'
@@ -7,7 +7,8 @@ import { useTimeStore } from '../stores/TimeStore'
 import { OhVueIcon } from "oh-vue-icons";
 
 interface ProcessedRobot extends Robot {
-    time_since_last_heard: number
+    lag_seconds: number
+    status_color: string
     is_stale: boolean
 }
 
@@ -21,7 +22,6 @@ const svgRef = ref<SVGSVGElement | null>(null)
 const containerWidth = ref(props.width || 400)
 const containerHeight = ref(props.height || 400)
 
-// Data State
 const robots = shallowRef<ProcessedRobot[]>([])
 
 // Camera State
@@ -41,9 +41,18 @@ let gGrid: d3.Selection<SVGGElement, unknown, null, undefined>
 let gContent: d3.Selection<SVGGElement, unknown, null, undefined>
 let zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown>
 
-// Colors
+// ----------------------------------------------------
+// COLOR LOGIC (Synced with Cesium helper)
+// ----------------------------------------------------
 const linkColorScale = d3.scaleLinear<string>().domain([0, 0.5, 1]).range(['#FF4444', '#FFFF00', '#00FF00'])
-const getNodeColor = (t: number) => t < 3 ? '#00FF00' : t < 5 ? '#FFFF00' : t < 7 ? '#FF0000' : '#888'
+
+const calculateStatusColor = (lagSeconds: number | null): string => {
+    if (lagSeconds === null) return '#888888'; // Gray
+    if (lagSeconds < 10) return '#00FF00';     // Green
+    if (lagSeconds < 15) return '#FFFF00';     // Yellow
+    if (lagSeconds < 25) return '#FF0000';     // Red
+    return '#888888';                          // Gray (Stale)
+}
 
 // ----------------------------------------------------
 // 1. DATA UPDATE LOOP
@@ -59,16 +68,33 @@ const updateData = async () => {
 
     dronesMap.forEach((robot) => {
         if (!robot.point) return;
-        const timeSince = Math.abs((currentTime - (robot.last_heard * 1000)) / 1000)
+
+        // --- Match Cesium Lag Logic ---
+        const history = historyStore.cache.get(robot.nid);
+        let lagSeconds: number | null = null;
+
+        if (history && history.length > 0) {
+            const idx = historyStore.findLastIndexBefore(history, currentTime);
+            if (idx !== -1) {
+                const pastEntry = history[idx];
+                const heardMs = pastEntry.timestamp;
+
+                const nowMs = currentTime < 10000000000 ? currentTime * 1000 : currentTime;
+                const actualHeardMs = heardMs < 10000000000 ? heardMs * 1000 : heardMs;
+
+                lagSeconds = (nowMs - actualHeardMs) / 1000.0;
+            }
+        }
+
+        const statusColor = calculateStatusColor(lagSeconds);
 
         snapshot.push({
             ...robot,
-            time_since_last_heard: timeSince,
-            is_stale: timeSince > 5
+            lag_seconds: lagSeconds ?? 999,
+            status_color: statusColor,
+            is_stale: lagSeconds === null || lagSeconds > 25
         })
 
-        // FIX: Calculate bounds for ALL drones, even stale ones. 
-        // We only exclude 0,0 points which are likely invalid GPS inits.
         if (Math.abs(robot.point.lon) > 0.001 && Math.abs(robot.point.lat) > 0.001) {
             if (robot.point.lon < minLon) minLon = robot.point.lon
             if (robot.point.lon > maxLon) maxLon = robot.point.lon
@@ -80,13 +106,10 @@ const updateData = async () => {
 
     robots.value = snapshot
 
-    // If in Auto Mode, update where we WANT the camera to be
     if (hasValidPoints && isAutoMode.value) {
-        // Prevent singular bounds (if only 1 drone)
         if (maxLon === minLon) { minLon -= 0.0005; maxLon += 0.0005 }
         if (maxLat === minLat) { minLat -= 0.0005; maxLat += 0.0005 }
 
-        // Add 20% padding
         const lonPad = (maxLon - minLon) * 0.2
         const latPad = (maxLat - minLat) * 0.2
 
@@ -95,122 +118,78 @@ const updateData = async () => {
         targetBounds.minLat = minLat - latPad
         targetBounds.maxLat = maxLat + latPad
 
-        // FIX: Snap instantly on first load so we don't start at 0,0
         if (!isInitialized || (currentBounds.minLon === 0 && currentBounds.maxLon === 0)) {
             Object.assign(currentBounds, targetBounds)
             isInitialized = true
-            // Force immediate D3 sync
             if (svgSelect) syncD3ToCamera()
         }
     }
 }
 
 // ----------------------------------------------------
-// 2. ZOOM LOGIC
+// 2. ZOOM LOGIC (Omitted unchanged parts for brevity...)
 // ----------------------------------------------------
 const setupZoom = () => {
     if (!svgSelect) return
-
-    // Reference Scale: World Coords -> Arbitrary Pixel Space
     const refXScale = d3.scaleLinear().domain([-180, 180]).range([0, 360000])
     const refYScale = d3.scaleLinear().domain([-90, 90]).range([180000, 0])
 
     zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
-        .scaleExtent([0.1, 100000]) // Allow deep zoom
+        .scaleExtent([0.1, 100000])
         .on('zoom', (event) => {
             if (event.sourceEvent) {
                 isAutoMode.value = false
-
                 const t = event.transform
-                const newX = t.rescaleX(refXScale)
-                const newY = t.rescaleY(refYScale)
-
-                const w = containerWidth.value
-                const h = containerHeight.value
-
-                currentBounds.minLon = newX.invert(0)
-                currentBounds.maxLon = newX.invert(w)
-                currentBounds.maxLat = newY.invert(0)
-                currentBounds.minLat = newY.invert(h)
+                const newX = t.rescaleX(refXScale); const newY = t.rescaleY(refYScale)
+                currentBounds.minLon = newX.invert(0); currentBounds.maxLon = newX.invert(containerWidth.value)
+                currentBounds.maxLat = newY.invert(0); currentBounds.minLat = newY.invert(containerHeight.value)
             }
         })
-
     svgSelect.call(zoomBehavior).on("dblclick.zoom", null)
 }
 
 const syncD3ToCamera = () => {
     if (!svgSelect || !zoomBehavior) return
-
-    const w = containerWidth.value
-    const h = containerHeight.value
-
+    const w = containerWidth.value; const h = containerHeight.value
     const refXScale = d3.scaleLinear().domain([-180, 180]).range([0, 360000])
     const refYScale = d3.scaleLinear().domain([-90, 90]).range([180000, 0])
-
-    // Calculate Transform that creates currentBounds
     const kx = w / (refXScale(currentBounds.maxLon) - refXScale(currentBounds.minLon))
     const ky = h / (refYScale(currentBounds.minLat) - refYScale(currentBounds.maxLat))
     const k = Math.min(kx, ky)
-
-    const centerLon = (currentBounds.minLon + currentBounds.maxLon) / 2
-    const centerLat = (currentBounds.minLat + currentBounds.maxLat) / 2
-
-    const tx = (w / 2) - refXScale(centerLon) * k
-    const ty = (h / 2) - refYScale(centerLat) * k
-
+    const tx = (w / 2) - refXScale((currentBounds.minLon + currentBounds.maxLon) / 2) * k
+    const ty = (h / 2) - refYScale((currentBounds.minLat + currentBounds.maxLat) / 2) * k
     const transform = d3.zoomIdentity.translate(tx, ty).scale(k)
-
-    svgSelect.on("zoom", null)
-    svgSelect.call(zoomBehavior.transform, transform)
-    svgSelect.on("zoom", zoomBehavior.on("zoom"))
+    // @ts-expect-error
+    svgSelect.on("zoom", null); svgSelect.call(zoomBehavior.transform, transform); svgSelect.on("zoom", zoomBehavior.on("zoom"))
 }
 
-const toggleAutoMode = () => {
-    isAutoMode.value = true
-    isInitialized = false // Triggers snap/lerp logic in updateData
-    updateData() // Force update
-}
+const toggleAutoMode = () => { isAutoMode.value = true; isInitialized = false; updateData() }
 
 // ----------------------------------------------------
-// 3. RENDER LOOP (High Frequency)
+// 3. RENDER LOOP
 // ----------------------------------------------------
 const renderLoop = () => {
     if (!svgSelect) return
 
-    // A. AUTO MODE LERP
     if (isAutoMode.value && isInitialized) {
         const lerp = 0.1
         currentBounds.minLon += (targetBounds.minLon - currentBounds.minLon) * lerp
         currentBounds.maxLon += (targetBounds.maxLon - currentBounds.maxLon) * lerp
         currentBounds.minLat += (targetBounds.minLat - currentBounds.minLat) * lerp
         currentBounds.maxLat += (targetBounds.maxLat - currentBounds.maxLat) * lerp
-
         syncD3ToCamera()
     }
 
-    // B. SCALES
-    const w = containerWidth.value
-    const h = containerHeight.value
-    const padding = 0
+    const xScale = d3.scaleLinear().domain([currentBounds.minLon, currentBounds.maxLon]).range([0, containerWidth.value])
+    const yScale = d3.scaleLinear().domain([currentBounds.minLat, currentBounds.maxLat]).range([containerHeight.value, 0])
 
-    // Safety: Prevent 0 or NaN scales
-    if (currentBounds.minLon === currentBounds.maxLon) {
-        currentBounds.minLon -= 0.001
-        currentBounds.maxLon += 0.001
-    }
+    const xAxis = d3.axisBottom(xScale).ticks(5).tickSize(-containerHeight.value).tickFormat(() => "")
+    const yAxis = d3.axisLeft(yScale).ticks(5).tickSize(-containerWidth.value).tickFormat(() => "")
 
-    const xScale = d3.scaleLinear().domain([currentBounds.minLon, currentBounds.maxLon]).range([padding, w - padding])
-    const yScale = d3.scaleLinear().domain([currentBounds.minLat, currentBounds.maxLat]).range([h - padding, padding])
+    gGrid.select<SVGGElement>('.x-grid').attr('transform', `translate(0, ${containerHeight.value})`).call(xAxis)
+    gGrid.select<SVGGElement>('.y-grid').call(yAxis)
 
-    // C. DRAW GRID
-    const xAxis = d3.axisBottom(xScale).ticks(5).tickSize(-h).tickFormat(() => "")
-    const yAxis = d3.axisLeft(yScale).ticks(5).tickSize(-w).tickFormat(() => "")
-
-    // Using simple call here. We assume gGrid exists.
-    gGrid.select<SVGGElement>('.x-grid').attr('transform', `translate(0, ${h})`).call(xAxis)
-    gGrid.select<SVGGElement>('.y-grid').attr('transform', `translate(0, 0)`).call(yAxis)
-
-    // D. DRAW LINKS
+    // LINKS
     const linksData: any[] = []
     const activeDrones = robots.value.filter(d => !d.is_stale)
     const processedPairs = new Set<string>()
@@ -239,19 +218,18 @@ const renderLoop = () => {
         .attr('y2', d => yScale(d.tgt.point!.lat))
         .attr('stroke', d => linkColorScale(d.strength))
 
-    // E. DRAW NODES
+    // NODES
     const nodes = gContent.select('.nodes-group').selectAll('g.node').data(robots.value, (d: any) => d.nid)
     const nodesEnter = nodes.enter().append('g').attr('class', 'node')
-    nodesEnter.append('circle').attr('r', 6).attr('stroke', '#fff').attr('stroke-width', 2)
+    nodesEnter.append('circle').attr('r', 6).attr('stroke-width', 2)
     nodesEnter.append('path').attr('d', 'M-4-4L4 4M4-4L-4 4').attr('stroke', 'red').attr('stroke-width', 2).attr('class', 'cross')
-    nodesEnter.append('text').attr('y', -10).attr('text-anchor', 'middle').attr('fill', 'white').style('font-size', '10px').style('pointer-events', 'none')
-        .style('text-shadow', '0 1px 2px black')
+    nodesEnter.append('text').attr('y', -10).attr('text-anchor', 'middle').attr('fill', 'white').style('font-size', '10px').style('pointer-events', 'none').style('text-shadow', '0 1px 2px black')
 
     nodes.exit().remove()
     const nodesMerge = nodes.merge(nodesEnter as any)
     nodesMerge.attr('transform', d => `translate(${xScale(d.point!.lon)}, ${yScale(d.point!.lat)})`)
     nodesMerge.select('circle')
-        .attr('fill', d => getNodeColor(d.time_since_last_heard))
+        .attr('fill', d => d.status_color)
         .attr('stroke', d => d.is_stale ? '#444' : '#fff')
     nodesMerge.select('.cross').attr('opacity', d => d.is_stale ? 1 : 0)
     nodesMerge.select('text').text(d => d.display_name || d.nid.slice(-3))
@@ -259,30 +237,15 @@ const renderLoop = () => {
     animationFrameId = requestAnimationFrame(renderLoop)
 }
 
-// ----------------------------------------------------
-// LIFECYCLE
-// ----------------------------------------------------
 onMounted(() => {
     if (!svgRef.value) return
-
     svgSelect = d3.select(svgRef.value)
-
-    // Grid Layer (Behind)
     gGrid = svgSelect.append('g').attr('class', 'layer-grid')
-    gGrid.append('g').attr('class', 'x-grid')
-    gGrid.append('g').attr('class', 'y-grid')
-
-    // Content Layer
+    gGrid.append('g').attr('class', 'x-grid'); gGrid.append('g').attr('class', 'y-grid')
     gContent = svgSelect.append('g').attr('class', 'layer-content')
-    gContent.append('g').attr('class', 'links-group')
-    gContent.append('g').attr('class', 'nodes-group')
-
-    setupZoom()
-
-    updateData()
-    dataInterval = setInterval(updateData, 200)
-    renderLoop()
-
+    gContent.append('g').attr('class', 'links-group'); gContent.append('g').attr('class', 'nodes-group')
+    setupZoom(); updateData()
+    dataInterval = setInterval(updateData, 200); renderLoop()
     if (containerRef.value) {
         resizeObserver = new ResizeObserver(entries => {
             containerWidth.value = entries[0].contentRect.width

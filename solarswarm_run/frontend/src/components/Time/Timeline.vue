@@ -1,39 +1,74 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import * as Cesium from 'cesium'
 import { OhVueIcon } from "oh-vue-icons"
 import { useDroneEntityStore } from '../../DronesData/DroneEntityStore'
 import { useTimeStore } from '../../stores/TimeStore'
+import { useDroneHistoryStore } from '../../DronesData/DroneHistoryStore'
 
 const droneEntityStore = useDroneEntityStore()
+const droneHistoryStore = useDroneHistoryStore()
 const timeStore = useTimeStore()
 
-// --- STATE ---
+// --- UI & PLAYBACK STATE ---
 const isPlaying = ref(true)
 const playbackSpeed = ref(1)
 const currentTimeString = ref('')
-
-// Playhead Positions (0-100%)
 const currentTimePct = ref(0)
-const realTimePct = ref(-100) // Position of "Now"
+const realTimePct = ref(-100)
+const isTimelineLoading = ref(false)
+const showDebug = ref(false)
+
+// --- CANVAS REFS ---
+const activityCanvas = ref<HTMLCanvasElement | null>(null)
 
 // --- PHYSICS STATE (Lerp Targets) ---
 const targetDuration = ref(3600)
 const visualDuration = ref(3600)
-
 const targetCenter = ref<Cesium.JulianDate | null>(null)
 const visualCenter = ref<Cesium.JulianDate | null>(null)
 
-const SPEED_OPTIONS = [0.5, 1, 2, 5, 10, 30, 60]
+// --- CACHING STATE ---
+const lastFetchCenterUnix = ref(0)
+const lastFetchDuration = ref(0)
 
-// Standard Time Steps for Ticks
+const SPEED_OPTIONS = [0.5, 1, 2, 5, 10, 30, 60]
 const TIME_STEPS = [
-    1, 2, 5, 10, 15, 30, // seconds
-    60, 120, 300, 600, 900, 1800, // 1m, 2m, 5m...
-    3600, 7200, 14400, 21600, 43200, 86400 // hours
+    1, 2, 5, 10, 15, 30,
+    60, 120, 300, 600, 900, 1800,
+    3600, 7200, 14400, 21600, 43200, 86400
 ]
 
 const getClock = () => droneEntityStore.viewer?.clock
+
+// ----------------------------------------------------------------
+// COMPUTED: LIVE STATUS
+// ----------------------------------------------------------------
+const isLive = () => {
+    // We consider it "Live" if the clock is within 2 seconds of real time
+    if (!droneEntityStore.viewer) return false
+    const now = Cesium.JulianDate.now()
+    const current = droneEntityStore.viewer.clock.currentTime
+    const diff = Math.abs(Cesium.JulianDate.secondsDifference(now, current))
+    return diff < 5.0
+}
+
+// ----------------------------------------------------------------
+// UTILS
+// ----------------------------------------------------------------
+function findStartIndex(arr: number[], minVal: number): number {
+    let left = 0, right = arr.length - 1, result = -1
+    while (left <= right) {
+        const mid = Math.floor((left + right) / 2)
+        if (arr[mid] >= minVal) {
+            result = mid
+            right = mid - 1
+        } else {
+            left = mid + 1
+        }
+    }
+    return result === -1 ? arr.length : result
+}
 
 // ----------------------------------------------------------------
 // INITIALIZATION
@@ -48,11 +83,9 @@ const initWindow = () => {
 }
 
 // ----------------------------------------------------------------
-// SMART TICKS ENGINE
+// SMART TICKS
 // ----------------------------------------------------------------
-
 const currentStepSize = computed(() => {
-    // Increased divisor to 16 to show MORE ticks (Denser)
     const idealStep = visualDuration.value / 16
     return TIME_STEPS.find(s => s >= idealStep) || 86400
 })
@@ -62,52 +95,147 @@ const timestamps = computed(() => {
 
     const step = currentStepSize.value
     const duration = visualDuration.value
-
     const halfDur = duration / 2
+
     const startWindow = Cesium.JulianDate.addSeconds(visualCenter.value, -halfDur, new Cesium.JulianDate())
     const endWindow = Cesium.JulianDate.addSeconds(visualCenter.value, halfDur, new Cesium.JulianDate())
 
-    // Align first tick to grid
     const startUnix = Cesium.JulianDate.toDate(startWindow).getTime() / 1000
     const remainder = startUnix % step
-    let currentUnix = (startUnix - remainder) - step // Start slightly before window
+    let currentUnix = (startUnix - remainder) - step
 
     const endUnix = (Cesium.JulianDate.toDate(endWindow).getTime() / 1000) + step
     const ticks = []
 
     while (currentUnix <= endUnix) {
         const date = new Date(currentUnix * 1000)
-
-        // Calculate Position % based on Window Start
         const tickTime = Cesium.JulianDate.fromDate(date)
         const diff = Cesium.JulianDate.secondsDifference(tickTime, startWindow)
         const pct = (diff / duration) * 100
 
-        // Label Logic
         let label = ''
-        if (step < 60) {
-            label = date.toLocaleTimeString([], { minute: '2-digit', second: '2-digit' })
-        } else if (step >= 86400) {
-            label = date.toLocaleDateString([], { month: 'short', day: 'numeric' })
-        } else {
-            label = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
+        if (step < 60) label = date.toLocaleTimeString([], { minute: '2-digit', second: '2-digit' })
+        else if (step >= 86400) label = date.toLocaleDateString([], { month: 'short', day: 'numeric' })
+        else label = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
-        // Determine "Major" tick (e.g. every hour on the hour)
-        const isMajor = currentUnix % (step * 5) === 0
-
-        ticks.push({
-            id: currentUnix,
-            pct,
-            label,
-            isMajor
-        })
-
+        ticks.push({ id: currentUnix, pct, label, isMajor: currentUnix % (step * 5) === 0 })
         currentUnix += step
     }
-
     return ticks
 })
+
+// ----------------------------------------------------------------
+// DATA FETCHING
+// ----------------------------------------------------------------
+let fetchTimeout: number | null = null;
+
+watch([targetCenter, targetDuration], () => {
+    if (fetchTimeout) clearTimeout(fetchTimeout);
+
+    fetchTimeout = window.setTimeout(async () => {
+        if (!targetCenter.value) return;
+
+        const centerUnix = Cesium.JulianDate.toDate(targetCenter.value).getTime();
+        const durationMs = targetDuration.value * 1000;
+
+        const isCoverageGood =
+            Math.abs(centerUnix - lastFetchCenterUnix.value) < (lastFetchDuration.value * 0.4) &&
+            Math.abs(durationMs - lastFetchDuration.value) < (lastFetchDuration.value * 0.2);
+
+        if (isCoverageGood && !isTimelineLoading.value) return;
+
+        isTimelineLoading.value = true;
+        const bufferMultiplier = 3;
+        const fetchDuration = durationMs * bufferMultiplier;
+        const halfFetch = fetchDuration / 2;
+
+        const start = centerUnix - halfFetch;
+        const end = centerUnix + halfFetch;
+
+        try {
+            await droneHistoryStore.loadActivityMarkers(start, end);
+            lastFetchCenterUnix.value = centerUnix;
+            lastFetchDuration.value = fetchDuration;
+        } finally {
+            isTimelineLoading.value = false;
+        }
+    }, 500);
+});
+
+// ----------------------------------------------------------------
+// CANVAS DRAWING
+// ----------------------------------------------------------------
+const drawCanvas = () => {
+    const cvs = activityCanvas.value;
+    if (!cvs || !visualCenter.value) return;
+
+    const ctx = cvs.getContext('2d');
+    if (!ctx) return;
+
+    const width = cvs.clientWidth;
+    const height = cvs.clientHeight;
+    const dpr = window.devicePixelRatio || 1;
+
+    // Resize handling
+    if (cvs.width !== width * dpr || cvs.height !== height * dpr) {
+        cvs.width = width * dpr;
+        cvs.height = height * dpr;
+        ctx.scale(dpr, dpr);
+    }
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Timeline Math
+    const centerMs = Cesium.JulianDate.toDate(visualCenter.value).getTime();
+    const halfDurMs = (visualDuration.value / 2) * 1000;
+    const startMs = centerMs - halfDurMs;
+    const totalDurMs = visualDuration.value * 1000;
+
+    // Helper: MS -> Pixel X
+    const getX = (ms: number) => ((ms - startMs) / totalDurMs) * width;
+
+    // 1. DRAW CACHE FRAME (The Green Zone)
+    droneHistoryStore.cachedRanges.forEach(range => {
+        const x = getX(range.start);
+        const w = getX(range.end) - x;
+
+        if (w > 0) {
+            // Fill
+            ctx.fillStyle = 'rgba(76, 175, 80, 0.35)';
+            ctx.fillRect(x, 2, w, height - 4);
+
+            // Border
+            ctx.strokeStyle = '#4caf50';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, 2, w, height - 4);
+        }
+    });
+
+    // 2. DRAW ACTIVITY DOTS
+    ctx.fillStyle = '#4caf50';
+    ctx.globalAlpha = 0.8;
+
+    droneHistoryStore.activityMarkers.forEach((timestamps) => {
+        if (!timestamps || timestamps.length === 0) return;
+
+        let i = findStartIndex(timestamps, startMs);
+        const endMs = startMs + totalDurMs;
+        let lastDrawnPx = -100;
+
+        for (; i < timestamps.length; i++) {
+            const ts = timestamps[i];
+            if (ts > endMs) break;
+
+            const px = getX(ts);
+            if (px - lastDrawnPx < 4) continue;
+
+            ctx.fillRect(px, height - 6, 2, 4);
+            lastDrawnPx = px;
+        }
+    });
+
+    ctx.globalAlpha = 1.0;
+}
 
 // ----------------------------------------------------------------
 // ANIMATION LOOP
@@ -120,9 +248,13 @@ const renderLoop = () => {
         animFrame = requestAnimationFrame(renderLoop)
         return
     }
-    if (!targetCenter.value) initWindow()
+    if (!targetCenter.value || !visualCenter.value) {
+        initWindow()
+        animFrame = requestAnimationFrame(renderLoop)
+        return
+    }
 
-    // 1. PHYSICS (LERP)
+    // Lerp Visual Duration
     const lerp = 0.15
     if (Math.abs(targetDuration.value - visualDuration.value) > 0.1) {
         visualDuration.value += (targetDuration.value - visualDuration.value) * lerp
@@ -130,40 +262,40 @@ const renderLoop = () => {
         visualDuration.value = targetDuration.value
     }
 
-    if (targetCenter.value && visualCenter.value) {
-        const diff = Cesium.JulianDate.secondsDifference(targetCenter.value, visualCenter.value)
-        if (Math.abs(diff) > 0.1) {
-            visualCenter.value = Cesium.JulianDate.addSeconds(visualCenter.value, diff * lerp, new Cesium.JulianDate())
-        } else {
-            visualCenter.value = targetCenter.value.clone()
-        }
+    // Lerp Visual Center
+    const diff = Cesium.JulianDate.secondsDifference(targetCenter.value, visualCenter.value)
+    if (Math.abs(diff) > 0.01) {
+        visualCenter.value = Cesium.JulianDate.addSeconds(visualCenter.value, diff * lerp, new Cesium.JulianDate())
+    } else {
+        visualCenter.value = targetCenter.value.clone()
     }
 
-    // 2. CALCULATE POSITIONS (Playback & Realtime)
     const halfDur = visualDuration.value / 2
-    const startWindow = Cesium.JulianDate.addSeconds(visualCenter.value!, -halfDur, new Cesium.JulianDate())
+    const startWindow = Cesium.JulianDate.addSeconds(visualCenter.value, -halfDur, new Cesium.JulianDate())
 
-    // Playhead
+    // Calculations
     const diffPlayhead = Cesium.JulianDate.secondsDifference(clock.currentTime, startWindow)
     currentTimePct.value = (diffPlayhead / visualDuration.value) * 100
 
-    // Real-Time Indicator ("NOW")
     const now = Cesium.JulianDate.now()
     const diffNow = Cesium.JulianDate.secondsDifference(now, startWindow)
     realTimePct.value = (diffNow / visualDuration.value) * 100
 
-    // 3. AUTO SCROLL
-    if (isPlaying.value && currentTimePct.value > 95) {
+    // --- AUTO PAN LOGIC (THE FIX) ---
+    // Only auto-pan if the playhead is actively hitting the right edge of the screen (95% - 105%).
+    // If we are looking way back in the past (pct > 105%), do NOT auto-pan.
+    if (isPlaying.value && currentTimePct.value > 95 && currentTimePct.value < 105) {
         panWindow(targetDuration.value * 0.25)
     }
 
-    // 4. SYNC UI
-    if (isPlaying.value !== clock.shouldAnimate) isPlaying.value = clock.shouldAnimate
-    if (playbackSpeed.value !== clock.multiplier) playbackSpeed.value = clock.multiplier
+    isPlaying.value = clock.shouldAnimate
+    playbackSpeed.value = clock.multiplier
 
     const d = Cesium.JulianDate.toDate(clock.currentTime)
     currentTimeString.value = d.toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     timeStore.setTime(d.getTime())
+
+    drawCanvas()
 
     animFrame = requestAnimationFrame(renderLoop)
 }
@@ -183,9 +315,9 @@ const jumpToNow = () => {
     targetCenter.value = now.clone()
     c.shouldAnimate = true
 }
-
 const zoomIn = () => targetDuration.value = Math.max(30, targetDuration.value * 0.6)
 const zoomOut = () => targetDuration.value = Math.min(172800, targetDuration.value * 1.4)
+
 const panWindow = (secs: number) => {
     if (targetCenter.value)
         targetCenter.value = Cesium.JulianDate.addSeconds(targetCenter.value, secs, new Cesium.JulianDate())
@@ -196,46 +328,107 @@ const onScrub = (e: MouseEvent) => {
     if (!c || !visualCenter.value) return
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const pct = (e.clientX - rect.left) / rect.width
-    const dur = visualDuration.value
-    const start = Cesium.JulianDate.addSeconds(visualCenter.value, -dur / 2, new Cesium.JulianDate())
-    c.currentTime = Cesium.JulianDate.addSeconds(start, dur * pct, new Cesium.JulianDate())
+    const start = Cesium.JulianDate.addSeconds(visualCenter.value, -visualDuration.value / 2, new Cesium.JulianDate())
+    c.currentTime = Cesium.JulianDate.addSeconds(start, visualDuration.value * pct, new Cesium.JulianDate())
 }
 
-onMounted(() => animFrame = requestAnimationFrame(renderLoop))
-onUnmounted(() => animFrame && cancelAnimationFrame(animFrame))
+// Keyboard Navigation
+const onKeydown = (e: KeyboardEvent) => {
+    if (e.key === 'ArrowLeft') panWindow(-targetDuration.value * 0.1);
+    if (e.key === 'ArrowRight') panWindow(targetDuration.value * 0.1);
+    // Optional: Space to toggle play
+    if (e.code === 'Space') {
+        e.preventDefault();
+        togglePlay();
+    }
+}
+
+onMounted(() => {
+    animFrame = requestAnimationFrame(renderLoop)
+    window.addEventListener('keydown', onKeydown)
+})
+
+onUnmounted(() => {
+    if (animFrame) cancelAnimationFrame(animFrame)
+    window.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <template>
     <div class="timeline-root glass-panel">
-        <div class="toolbar d-flex justify-content-between align-items-center px-3">
-            <div class="d-flex align-items-center gap-2">
-                <button class="icon-btn" @click="togglePlay">
-                    <OhVueIcon :name="isPlaying ? 'bi-pause-fill' : 'bi-play-fill'" scale="1.2" />
-                </button>
-                <div class="time-display font-mono ms-2">{{ currentTimeString }}</div>
-            </div>
-            <div class="d-flex align-items-center gap-1 nav-group">
-                <button class="icon-btn small" @click="panWindow(-targetDuration * 0.2)">
-                    <OhVueIcon name="bi-chevron-left" />
-                </button>
-                <button class="icon-btn small" @click="zoomOut">
-                    <OhVueIcon name="bi-dash" />
-                </button>
-                <span class="zoom-label">Zoom</span>
-                <button class="icon-btn small" @click="zoomIn">
-                    <OhVueIcon name="bi-plus" />
-                </button>
-                <button class="icon-btn small" @click="panWindow(targetDuration * 0.2)">
-                    <OhVueIcon name="bi-chevron-right" />
-                </button>
-            </div>
-            <div class="d-flex align-items-center gap-2">
-                <button class="text-btn" @click="changeSpeed">{{ playbackSpeed }}x</button>
-                <button class="live-btn" @click="jumpToNow">LIVE</button>
+        <div class="toolbar ps-1 pe-2">
+            <div class="row align-items-center g-0 h-100">
+                <div class="col-4 d-flex align-items-center gap-2 toolbar-left">
+                    <button class="icon-btn small" @click="togglePlay">
+                        <OhVueIcon :name="isPlaying ? 'bi-pause-fill' : 'bi-play-fill'" scale="1.2" />
+                    </button>
+                    <div class="time-display font-mono">
+                        {{ currentTimeString }}
+                    </div>
+
+                    <div class="d-flex align-items-center gap-2 ms-2 position-relative" @mouseenter="showDebug = true"
+                        @mouseleave="showDebug = false">
+
+                        <transition name="fade">
+                            <div v-if="isTimelineLoading" class="loading-tag d-flex align-items-center gap-1">
+                                <OhVueIcon name="io-refresh-circle-sharp" animation="spin" scale="0.8" />
+                                <span class="loading-text">Loading...</span>
+                            </div>
+                        </transition>
+
+                        <div class="loading-tag info d-flex align-items-center gap-1" style="cursor:help">
+                            <OhVueIcon name="bi-info-circle-fill" scale="0.7" />
+                            <span class="loading-text">{{ droneHistoryStore.activeRobotCount }} drones</span>
+                        </div>
+
+                        <transition name="fade">
+                            <div v-if="showDebug" class="debug-tooltip">
+                                <div class="debug-row"><strong>RAM Points:</strong> {{
+                                    droneHistoryStore.debugStats.totalPointsInRam.toLocaleString() }}</div>
+                                <div class="debug-row"><strong>Est. Memory:</strong> {{
+                                    droneHistoryStore.debugStats.memoryUsageMb }} MB</div>
+                                <div class="debug-row"><strong>DB Reads:</strong> {{
+                                    droneHistoryStore.debugStats.dbReads }}</div>
+
+                                <div class="debug-divider"></div>
+
+                                <div class="debug-control">
+                                    <label>Cache (s):</label>
+                                    <input type="number" :value="droneHistoryStore.config.maxCacheWindowMs / 1000"
+                                        @input="e => droneHistoryStore.config.maxCacheWindowMs = Number((e.target as HTMLInputElement).value) * 1000"
+                                        style="width: 50px;" />
+                                </div>
+                            </div>
+                        </transition>
+                    </div>
+                </div>
+
+                <div class="col-4 d-flex justify-content-center align-items-center gap-1 toolbar-center">
+                    <button class="icon-btn small" @click="panWindow(-targetDuration * 0.2)">
+                        <OhVueIcon name="bi-chevron-left" />
+                    </button>
+                    <button class="icon-btn small" @click="zoomOut">
+                        <OhVueIcon name="bi-dash" />
+                    </button>
+                    <span class="zoom-label mx-1">Zoom</span>
+                    <button class="icon-btn small" @click="zoomIn">
+                        <OhVueIcon name="bi-plus" />
+                    </button>
+                    <button class="icon-btn small" @click="panWindow(targetDuration * 0.2)">
+                        <OhVueIcon name="bi-chevron-right" />
+                    </button>
+                </div>
+                <div class="col-4 d-flex justify-content-end align-items-center gap-2 toolbar-right">
+                    <button class="text-btn" @click="changeSpeed">{{ playbackSpeed }}x</button>
+                    <button class="live-btn" :class="{ active: isLive() }" @click="jumpToNow">LIVE</button>
+                </div>
             </div>
         </div>
 
         <div class="timeline-track-container" @click="onScrub">
+
+            <canvas ref="activityCanvas" class="activity-layer"></canvas>
+
             <div class="ticks-layer">
                 <div v-for="tick in timestamps" :key="tick.id" class="tick-mark" :style="{ left: tick.pct + '%' }">
                     <div class="tick-line" :class="{ major: tick.isMajor }"></div>
@@ -246,23 +439,66 @@ onUnmounted(() => animFrame && cancelAnimationFrame(animFrame))
             <div class="now-marker" :style="{ left: realTimePct + '%' }">
                 <div class="now-label">NOW</div>
             </div>
-
             <div class="playhead" :style="{ left: currentTimePct + '%' }">
                 <div class="playhead-knob"></div>
                 <div class="playhead-line"></div>
             </div>
-
-            <div class="hover-highlight"></div>
         </div>
     </div>
 </template>
 
 <style scoped>
-@font-face {
-    font-family: 'Latin Modern Math';
-    src: url("@/assets/latinmodern-math.otf") format('opentype');
+/* Only structural styles remain */
+
+.debug-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 8px;
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: monospace;
+    white-space: nowrap;
+    z-index: 3000;
+    pointer-events: auto;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
 }
 
+.debug-row {
+    margin-bottom: 2px;
+}
+
+.debug-divider {
+    height: 1px;
+    background: #555;
+    margin: 6px 0;
+}
+
+.debug-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.debug-control label {
+    width: 80px;
+    text-align: right;
+}
+
+.debug-control input {
+    background: #333;
+    border: 1px solid #555;
+    color: white;
+    border-radius: 4px;
+    padding: 1px 4px;
+    font-size: 11px;
+}
+
+/* ... Existing Styles ... */
 .font-mono {
     font-family: monospace;
     font-size: 14px;
@@ -276,8 +512,7 @@ onUnmounted(() => animFrame && cancelAnimationFrame(animFrame))
     left: 50%;
     transform: translateX(-50%);
     width: 80vw;
-    max-width: 90vw;
-    height: 85px;
+    height: 92px;
     z-index: 2000;
     background: rgba(255, 255, 255, 0.65);
     border-radius: 12px;
@@ -286,13 +521,24 @@ onUnmounted(() => animFrame && cancelAnimationFrame(animFrame))
     backdrop-filter: blur(16px) saturate(150%);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-    user-select: none;
+    overflow: visible;
 }
 
 .toolbar {
-    height: 40px;
+    height: 42px;
     border-bottom: 1px solid rgba(136, 136, 136, 0.2);
+}
+
+.toolbar-left {
+    min-width: 0;
+}
+
+.toolbar-center {
+    pointer-events: auto;
+}
+
+.toolbar-right {
+    white-space: nowrap;
 }
 
 .timeline-track-container {
@@ -300,16 +546,16 @@ onUnmounted(() => animFrame && cancelAnimationFrame(animFrame))
     position: relative;
     cursor: crosshair;
     background: rgba(255, 255, 255, 0.2);
+    padding: 6px 0;
     overflow: hidden;
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
 }
 
-/* Ticks */
 .ticks-layer {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    inset: 0;
+    z-index: 3;
     pointer-events: none;
 }
 
@@ -317,52 +563,49 @@ onUnmounted(() => animFrame && cancelAnimationFrame(animFrame))
     position: absolute;
     top: 0;
     height: 100%;
-    width: 1px;
 }
 
 .tick-line {
-    width: 2px;
+    width: 1px;
     height: 6px;
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.55);
 }
 
 .tick-line.major {
-    height: 12px;
-    background: rgba(0, 0, 0, 0.5);
-    width: 2px;
+    height: 8px;
+    background: rgba(0, 0, 0, 0.65);
 }
 
 .tick-label {
     position: absolute;
-    top: 8px;
-    left: 3px;
+    top: 10px;
+    left: 0px;
     font-size: 12px;
-    color: #333;
     font-family: monospace;
-    white-space: nowrap;
-    font-weight: bold;
-    opacity: 0.7;
+    color: #333;
+    opacity: 0.6;
 }
 
 .tick-label.major {
-    top: 14px;
-    font-size: 12px;
-    color: #333;
-    font-weight: bold;
     opacity: 1;
 }
 
-/* "NOW" Indicator (Blue) */
+.activity-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
 .now-marker {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 1px;
-    border-left: 1px dashed #007bff;
-    /* Blue dashed line */
+    border-left: 1px solid #007bff;
     z-index: 5;
     pointer-events: none;
-    opacity: 0.7;
 }
 
 .now-label {
@@ -372,12 +615,8 @@ onUnmounted(() => animFrame && cancelAnimationFrame(animFrame))
     font-size: 8px;
     font-weight: bold;
     color: #007bff;
-    background: rgba(255, 255, 255, 0.8);
-    padding: 0 2px;
-    border-radius: 2px;
 }
 
-/* Playhead (Red) */
 .playhead {
     position: absolute;
     top: 0;
@@ -395,46 +634,26 @@ onUnmounted(() => animFrame && cancelAnimationFrame(animFrame))
     height: 14px;
     background: #e63946;
     border-radius: 50%;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .playhead-line {
     position: absolute;
     top: 12px;
     bottom: 0;
-    left: 0;
     width: 2px;
     background: #e63946;
 }
 
-/* Buttons */
 .icon-btn {
     background: rgba(255, 255, 255, 0.5);
     border: 1px solid rgba(136, 136, 136, 0.3);
     border-radius: 6px;
-    color: #444;
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px 8px;
-    transition: all 0.3s;
-}
-
-.icon-btn:hover {
-    background: #fff;
-    color: #007bff;
+    padding: 4px;
 }
 
 .icon-btn.small {
-    padding: 2px 6px;
-}
-
-.zoom-label {
-    font-size: 10px;
-    text-transform: uppercase;
-    color: #666;
-    margin: 0 4px;
+    padding: 3px;
 }
 
 .text-btn {
@@ -447,12 +666,7 @@ onUnmounted(() => animFrame && cancelAnimationFrame(animFrame))
     border-radius: 4px;
 }
 
-.text-btn:hover {
-    background: rgba(0, 0, 0, 0.05);
-}
-
 .live-btn {
-    background: transparent;
     border: 1px solid #ff4444;
     color: #ff4444;
     font-weight: bold;
@@ -468,37 +682,52 @@ onUnmounted(() => animFrame && cancelAnimationFrame(animFrame))
     color: white;
 }
 
-.d-flex {
-    display: flex;
+/* NEW ACTIVE STATE FOR LIVE BUTTON */
+.live-btn.active {
+    background: #ff4444;
+    color: white;
+    box-shadow: 0 0 8px rgba(255, 68, 68, 0.5);
+    animation: pulse 2s infinite;
 }
 
-.justify-content-between {
-    justify-content: space-between;
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7);
+    }
+
+    70% {
+        box-shadow: 0 0 0 6px rgba(255, 68, 68, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(255, 68, 68, 0);
+    }
 }
 
-.align-items-center {
-    align-items: center;
+.loading-tag {
+    background: rgba(25, 118, 210, 0.1);
+    padding: 2px 8px;
+    border-radius: 20px;
+    color: #1976d2;
 }
 
-.gap-1 {
-    gap: 4px;
+.loading-tag.info {
+    background: rgba(0, 0, 0, 0.05);
+    color: #555;
 }
 
-.gap-2 {
-    gap: 8px;
+.loading-text {
+    font-size: 10px;
+    font-weight: bold;
 }
 
-.px-3 {
-    padding-left: 1rem;
-    padding-right: 1rem;
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.25s ease;
 }
 
-.py-1 {
-    padding-top: 0.25rem;
-    padding-bottom: 0.25rem;
-}
-
-.ms-2 {
-    margin-left: 0.5rem;
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
 }
 </style>

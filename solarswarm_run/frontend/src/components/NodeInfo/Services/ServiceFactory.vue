@@ -34,12 +34,7 @@ interface Ghost {
 const ghosts = ref<Ghost[]>([]);
 
 // UI State per service
-const serviceUiState = reactive<Record<string, {
-    showRawName: boolean,
-    isScrolling: boolean,
-    isLoading: boolean,     // Waiting for response
-    justUpdated: boolean    // Output flash
-}>>({});
+const serviceUiState = reactive<Record<string, { showRawName: boolean, isScrolling: boolean, isLoading: boolean, justUpdated: boolean }>>({});
 
 // --- Time Logic ---
 const currentTime = ref('');
@@ -151,24 +146,26 @@ function canExecute(service: NamedParsedInterface): boolean {
     });
 }
 
+
+
 async function executeService(service: NamedParsedInterface, event: MouseEvent) {
-    if (!canExecute(service)) return;
 
     const sName = service.serviceName;
     const uiState = serviceUiState[sName];
     const buttonEl = (event.currentTarget as HTMLElement);
     const buttonRect = buttonEl.getBoundingClientRect();
-    const newGhosts: Ghost[] = [];
 
-    // 1. Prepare Ghosts (Snapshot Position)
+    console.log(service, event)
+
+    // --- 1. Animation Trigger (Keep your existing ghost logic) ---
+    const newGhosts: Ghost[] = [];
     service.parsed.request.inputs.forEach(param => {
         const elementId = getInputId(sName, param.name);
         const inputEl = document.getElementById(elementId);
-
         if (inputEl) {
             const rect = inputEl.getBoundingClientRect();
             newGhosts.push({
-                id: Date.now() + Math.random().toString(),
+                id: Math.random().toString(),
                 style: {
                     top: `${rect.top}px`,
                     left: `${rect.left}px`,
@@ -177,67 +174,113 @@ async function executeService(service: NamedParsedInterface, event: MouseEvent) 
                     position: 'fixed',
                     zIndex: '9999',
                     opacity: '1',
-                    transform: 'scale(1)',
-                    transition: 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1)', // "Suck" ease
+                    transition: 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
                     pointerEvents: 'none',
                     border: '2px solid #ff34b1',
                     borderRadius: '8px',
                     backgroundColor: 'rgba(255, 255, 255, 0.4)',
-                    boxSizing: 'border-box'
                 }
             });
         }
     });
 
-    // 2. Mount Ghosts to DOM
     ghosts.value = newGhosts;
-    await nextTick(); // Wait for Vue to render the ghosts at start position
-
-    // 3. Trigger Animation (Move to Button)
+    await nextTick();
     requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            ghosts.value.forEach(g => {
-                g.style.top = `${buttonRect.top + (buttonRect.height / 2)}px`;
-                g.style.left = `${buttonRect.left + (buttonRect.width / 2)}px`;
-                g.style.width = '10px';
-                g.style.height = '10px';
-                g.style.opacity = '0';
-                g.style.borderRadius = '50%';
-            });
+        ghosts.value.forEach(g => {
+            g.style.top = `${buttonRect.top + (buttonRect.height / 2)}px`;
+            g.style.left = `${buttonRect.left + (buttonRect.width / 2)}px`;
+            g.style.width = '10px';
+            g.style.height = '10px';
+            g.style.opacity = '0';
         });
     });
 
-    // 4. Wait for animation (500ms)
-    await new Promise(r => setTimeout(r, 500));
-
-    // 5. Cleanup & Start Loading
-    ghosts.value = [];
-    service.parsed.request.inputs.forEach(p => clearInput(sName, p.name));
     uiState.isLoading = true;
 
-    // 6. Mock Network Wait (2 seconds)
-    await new Promise(r => setTimeout(r, 2000));
+    try {
+        // --- 2. Collect & Format Inputs ---
+        const requestArgs: Record<string, any> = {};
+        service.parsed.request.inputs.forEach(param => {
+            const val = serviceInputs[sName][param.name];
+            if (param.type.includes('int') || param.type.includes('float') || param.type.includes('double')) {
+                requestArgs[param.name] = val !== null ? Number(val) : 0;
+            } else {
+                requestArgs[param.name] = val;
+            }
+        });
 
-    // 7. Fill Outputs
-    service.parsed.response.outputs.forEach(p => {
-        if (p.type === DataType.Integer || p.type === DataType.Float) {
-            serviceInputs[sName][p.name] = Math.floor(Math.random() * 100);
-        } else if (p.type === DataType.Boolean) {
-            serviceInputs[sName][p.name] = true;
+        const robotId = viewedDroneStore.viewedNid;
+        if (!robotId) return;
+
+        // --- 3. The API Call ---
+        const response = await dronesPollingService?.value?.callRosService(
+            robotId,
+            service.serviceName,
+            service.serviceType,
+            requestArgs
+        );
+
+        console.log(serviceInputs)
+
+        // --- 4. Handle Response ---
+        // Your backend returns: { success: bool, result: { parsed_data: { ... } } }
+        if (response.success && response.result.parsed_data) {
+            const outputData = response.result.parsed_data;
+
+            console.log(outputData, service.parsed.response.outputs, sName, serviceInputs)
+
+            service.parsed.response.outputs.forEach(p => {
+                if (outputData?.hasOwnProperty(p.name)) {
+                    serviceInputs[sName][p.name] = outputData[p.name];
+                }
+            });
+
+            // Trigger the success flash
+            uiState.justUpdated = true;
+            setTimeout(() => { uiState.justUpdated = false; }, 1000);
         } else {
-            serviceInputs[sName][p.name] = "Data " + new Date().getSeconds();
+            console.error("Service Error:", response.result.stderr);
         }
-    });
 
-    // 8. Done
-    uiState.isLoading = false;
-    uiState.justUpdated = true;
-    setTimeout(() => { uiState.justUpdated = false; }, 1000);
+    } catch (error) {
+        console.error("Network Error Calling Service:", error);
+    } finally {
+        uiState.isLoading = false;
+        // Cleanup ghosts after animation completes
+        setTimeout(() => { ghosts.value = []; }, 600);
+    }
 }
 
 // --- Helpers ---
 function formatParamName(name: string) {
     return name.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
+}
+
+// Helper to parse ROS2 Python Object strings
+// e.g. "Response(lower='b', upper='B')" -> { lower: 'b', upper: 'B' }
+function parseRosResponseString(raw: any): Record<string, any> {
+    if (typeof raw !== 'string') return raw; // It's already an object
+
+    const result: Record<string, any> = {};
+
+    // Regex matches: key='val' OR key="val" OR key=123
+    const regex = /(\w+)=(?:'([^']*)'|"([^"]*)"|([^,\s)]+))/g;
+
+    let match;
+    while ((match = regex.exec(raw)) !== null) {
+        const key = match[1];
+        // Group 2=single quote, 3=double quote, 4=raw number/bool
+        let value = match[2] ?? match[3] ?? match[4];
+
+        // Try to convert numbers and booleans
+        if (value === 'true') value = true;
+        else if (value === 'false') value = false;
+        else if (!isNaN(Number(value)) && value.trim() !== '') value = Number(value);
+
+        result[key] = value;
+    }
+    return result;
 }
 
 function getServiceName(service: NamedParsedInterface) {

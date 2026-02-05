@@ -1,0 +1,5 @@
+string lat
+string lon 
+string alt
+---
+string msg

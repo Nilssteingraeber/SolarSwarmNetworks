@@ -7,12 +7,14 @@ import { useDroneEntityStore } from '../DronesData/DroneEntityStore'
 import { useDroneHistoryStore } from '../DronesData/DroneHistoryStore'
 import { useDroneDataStore } from '../DronesData/DroneDataStore'
 
-import { initGeoToolsHandler } from "../components/GeoEditing/GeoTools"
 import { useSettingsStore } from '../stores/SettingsStore'
 import { useTimeStore } from '../stores/TimeStore'
 import { UseViewedDroneStore } from '../stores/viewedDroneStore'
+import { useGeoToolsStore } from '../stores/GeoToolsStore'
 import { DronesPollingService } from '../DronesData/DronesPollingService'
 import { DroneSimulatorBackend } from '../DronesData/DroneSimulatorBackend'
+import { FormType } from '../models/GeoForm'
+import { initGeoToolsHandler } from '../components/GeoEditing/GeoToolsHandler'
 
 // @ts-expect-error
 Cesium.buildModuleUrl.setBaseUrl('/node_modules/cesium/Build/Cesium/')
@@ -23,6 +25,7 @@ Cesium.buildModuleUrl.setBaseUrl('/node_modules/cesium/Build/Cesium/')
 const droneEntityStore = useDroneEntityStore()
 const droneHistoryStore = useDroneHistoryStore()
 const droneDataStore = useDroneDataStore()
+const geoToolsStore = useGeoToolsStore()
 
 // ---------------------------
 const cesiumContainer = ref(null)
@@ -142,7 +145,6 @@ onMounted(() => {
     viewer.imageryLayers.add(new Cesium.ImageryLayer(osmImageryProvider))
 
     droneEntityStore.setViewer(viewer)
-    geoHandler = initGeoToolsHandler(viewer)
 
     // ---------------------------
     // Update TimeStore every tick
@@ -252,6 +254,45 @@ onMounted(() => {
 
 
     })
+
+    const initData = async (viewer: Cesium.Viewer) => {
+
+        initGeoToolsHandler(viewer)
+        const savedForms = await geoToolsStore.loadFromDisk();
+
+        savedForms.forEach((form: { data: { points: any[] }; type: any; name: any; id: any }) => {
+            // We need to "Re-draw" the entities based on the saved data
+            // This logic is essentially the "finalizeShape" logic but 
+            // sourced from form.data.points instead of activePoints
+
+            const points = form.data.points.map((p: { lon: number; lat: number; height: number | undefined }) => Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.height));
+            let primary: Cesium.Entity | null = null;
+            let labels: Cesium.Entity[] = [];
+
+            if (form.type === FormType.LineString) {
+                primary = viewer.entities.add({
+                    name: form.name,
+                    polyline: { positions: points, width: 3, material: Cesium.Color.CYAN, clampToGround: true }
+                });
+                for (let i = 0; i < points.length - 1; i++) {
+                    // Re-create label helper logic here or import it
+                    const d = Cesium.Cartesian3.distance(points[i], points[i + 1]);
+                    const mid = Cesium.Cartesian3.midpoint(points[i], points[i + 1], new Cesium.Cartesian3());
+                    labels.push(viewer.entities.add({
+                        position: mid,
+                        label: { text: `${d.toFixed(2)}m`, font: "14px monospace", showBackground: true }
+                    }));
+                }
+            }
+            // ... Handle Polygon and Sphere reconstruction similarly ...
+
+            if (primary)
+                geoToolsStore.entityList.set(form.id, { primary, labels });
+        });
+    }
+
+    if (viewer)
+        initData(viewer)
 })
 
 </script>
