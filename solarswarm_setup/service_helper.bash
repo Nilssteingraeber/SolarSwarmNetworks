@@ -105,11 +105,15 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
     
     sudo hostname $MESH_IDENTITY # set hostname
     
-    if [ ! -z ] && [ $3 == "keys" ]; then
+    if [ ! -z $1 ] && [ $1 == "keys" ]; then
         echo "Which keys should be sent? (own/all) "
         read which_keys
     fi
-    if [ ! $which_keys == "own" ] && [ ! $which_keys == "all" ] || [ -z $which_keys ]; then
+    if [ -z $which_keys ]; then
+        echo "Error: No parameter was given"
+        exit 1
+    fi
+    if [ ! $which_keys == "own" ] && [ ! $which_keys == "all" ]; then
         echo "Error: Choose either 'own' or 'all'"
         exit 1
     fi
@@ -153,11 +157,11 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
                     fi
                 elif [ ! -z $1 ] && [ $1 == "hosts" ]; then # copy names, names_with_ip, and config to all reachable hosts
                     scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/names \
-                        $host:$remote_setup/ssh_identities/rx/ssh/
+                        $host:$remote_setup/rx/ssh/
                     scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/names_with_ip \
-                        $host:$remote_setup/ssh_identities/rx/ssh/
+                        $host:$remote_setup/rx/ssh/
                     scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/config \
-                        $host:$remote_setup/ssh_identities/rx/ssh/
+                        $host:$remote_setup/rx/ssh/
                 else
                     echo "Error: No valid option"
                     exit 1
@@ -167,11 +171,11 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
             fi
         done
     else # with specific name
-        if [ -z $2 ] || ! $(grep -E "^$2$" ssh_identities/names &>/dev/null); then
+        if [ -z $2 ] || ! grep -E "^$2$" ssh_identities/names 2>/dev/null; then
             echo "Error: Expected 'everybody' or a known name after 'keys' or 'hosts'"
             exit 1
         fi
-        read host ip <<< $(grep -E "^$2 " ssh_identities/names_with_ip &>/dev/null)
+        read host ip <<< $(grep -E "^$2 " ssh_identities/names_with_ip 2>/dev/null)
         echo "Connecting to $host $ip..."
         # check if host is reachable (timeout 1 second (-W) and ping count limited to 1 (-c))
         if ping -W 1 -c 1 $ip &>/dev/null; then # ping once with 1s timeout
@@ -180,9 +184,9 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
             remote_setup=/home/$host/solarswarm_setup
 
             if [ ! -z $1 ] && [ $1 == "keys" ]; then # copy public keys
-                if [ $which_keys == "all" ]; then
+                if [ ! -z $which_keys ] && [ $which_keys == "all" ]; then
                     scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/*.pub \
-                        $host:$remote_setup/ssh_identities/rx/ssh/ # copy public keys
+                        $host:$remote_setup/rx/ssh/ # copy public keys
                     if [ ! -z $4 ] && [ $4 == "register" ]; then # add to authorized_keys of host
                         # register own key key first to possibly not require a password for every other key
                         ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$MESH_IDENTITY.pub $host@$ip
@@ -194,18 +198,18 @@ send_to_hosts() { # copy files to all available ssh hosts' rx/
                     fi
                 elif [ $which_keys == "own" ]; then
                     scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/keys/$MESH_IDENTITY.pub \
-                        $host:$remote_setup/ssh_identities/rx/ssh/ # copy public key
+                        $host:$remote_setup/rx/ssh/ # copy public key
                     if [ ! -z $4 ] && [ $4 == "register" ]; then # add to authorized_keys of host
                         ssh-copy-id $SSH_TIMEOUT $HOST_CHECKING -f -i ssh_identities/keys/$MESH_IDENTITY.pub $host@$ip
                     fi
                 fi
             elif [ ! -z $1 ] && [ $1 == "hosts" ]; then # copy names, names_with_ip, and config to all reachable hosts
                 scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/names \
-                    $host:$remote_setup/ssh_identities/rx/ssh/
+                    $host:$remote_setup/rx/ssh/
                 scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/names_with_ip \
-                    $host:$remote_setup/ssh_identities/rx/ssh/
+                    $host:$remote_setup/rx/ssh/
                 scp $SSH_TIMEOUT $HOST_CHECKING ssh_identities/config \
-                    $host:$remote_setup/ssh_identities/rx/ssh/
+                    $host:$remote_setup/rx/ssh/
             else
                 echo "Error: No valid option"
                 exit 1
@@ -253,7 +257,7 @@ collect() { # copy files from all reachable ssh hosts to local rx/
                     scp -r $SSH_TIMEOUT $HOST_CHECKING $host:$remote_setup/logs/* rx/logs/setup/$host
                 elif [ ! -z $1 ] && [ $1 == "keys" ]; then # copy keys
                     scp $SSH_TIMEOUT $HOST_CHECKING $host:$remote_setup/ssh_identities/keys/*.pub \
-                        ssh_identities/rx/ssh/ # copy public keys
+                        rx/ssh/ # copy public keys
                     echo "Note: For other hosts to be able to use their private keys, you must add their public keys to your '~/.ssh/authorized_keys'."
                     echo "You can use 'bash service_helper.bash' to add all local keys to your '~/.ssh/authorized_keys'"
                 fi
@@ -262,11 +266,11 @@ collect() { # copy files from all reachable ssh hosts to local rx/
             fi
         done
     else # with specific name
-        if [ -z $2 ] || ! $(grep -E "^$2$" ssh_identities/names &>/dev/null); then
+        if [ -z $2 ] || ! grep -E "^$2$" ssh_identities/names 2>/dev/null; then
             echo "Error: Expected 'everybody' or a known name after 'logs'"
             exit 1
         fi
-        read host ip <<< $(grep -E "^$2 " ssh_identities/names_with_ip &>/dev/null)
+        read host ip <<< $(grep -E "^$2 " ssh_identities/names_with_ip 2>/dev/null)
         echo "Connecting to $host $ip..."
         # check if host is reachable (timeout 1 second (-W) and ping count limited to 1 (-c))
         if ping -W 1 -c 1 $ip &>/dev/null; then # ping once with 1s timeout
@@ -289,7 +293,7 @@ collect() { # copy files from all reachable ssh hosts to local rx/
                 fi
             elif [ ! -z $1 ] && [ $1 == "keys" ]; then # copy public keys
                 scp $SSH_TIMEOUT $HOST_CHECKING $host:$remote_setup/ssh_identities/keys/*.pub \
-                    ssh_identities/rx/ssh/
+                    rx/ssh/
             else
                 echo "Error: No valid option"
                 exit 1
@@ -415,9 +419,8 @@ elif [ $1 == "send" ]; then
 elif [ $1 == "collect" ]; then
     if [ ! -z $2 ] && [ $2 == "logs" ]; then
         collect logs $3
-    else
-        echo "Error: Only logs can be collected currentrly"
-        exit 1    
+    elif [ ! -z $2 ] && [ $2 == "keys" ]; then
+        collect keys $3 $4
     fi
 elif [ $1 == "register" ]; then
     register_locally
