@@ -1,21 +1,12 @@
 <script setup lang="ts">
-import TopMenu from '@/components/topMenu/TopMenu.vue';
-import Timeline from '../components/Time/Timeline.vue';
+import TopMenu from '@/components/TopMenu/TopMenu.vue';
+import Timeline from '../components/TimeLine/Timeline.vue';
 import Cesium from './Cesium.vue';
 import { MDBCol, MDBRow } from 'mdb-vue-ui-kit';
 import ConnectionMap from './ConnectionMap.vue';
-import { useDroneDataStore } from '../DronesData/DroneDataStore';
-import { useDroneEntityStore } from '../DronesData/DroneEntityStore';
-import { useDroneHistoryStore } from '../DronesData/DroneHistoryStore';
-
-const droneEntityStore = useDroneEntityStore()
-const droneHistoryStore = useDroneHistoryStore()
-const droneDataStore = useDroneDataStore()
-
 </script>
 
 <template>
-
   <div style="width: 100%; height: 100vh">
     <Cesium />
     <ConnectionMap />
@@ -26,5 +17,4 @@ const droneDataStore = useDroneDataStore()
     </MDBRow>
     <Timeline />
   </div>
-
 </template>

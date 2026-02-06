@@ -3,7 +3,7 @@ import { MDBTable } from 'mdb-vue-ui-kit'
 import { storeToRefs } from 'pinia'
 import GeoItemListEntry from './GeoItemListEntry.vue'
 import { BoundingSphere, Cartesian3, HeadingPitchRange, Math as CesiumMath } from 'cesium'
-import { useDroneEntityStore } from '../../DronesData/DroneEntityStore'
+import { useDroneEntityStore } from '../../dronesData/DroneEntityStore'
 import { GeoForm } from '../../models/GeoForm'
 import { useGeoToolsStore, SelectedTool } from '../../stores/GeoToolsStore'
 
@@ -40,9 +40,6 @@ const onLocate = (form: GeoForm) => {
 }
 
 const onEdit = (form: GeoForm) => {
-    // Basic implementation: Close list, switch to Move tool
-    // Note: Selecting specific item for edit requires more complex state in Store (selectedId)
-    console.log("Edit form", form.name)
     geoStore.setTool(SelectedTool.Move)
 }
 

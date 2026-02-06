@@ -1,119 +1,140 @@
 // src/workers/db.worker.ts
 
-let _db: IDBDatabase | null = null;
+let _db: IDBDatabase | null = null
+const DB_NAME = 'DroneHistoryDB'
+const DB_VERSION = 5
 
-async function initDB(): Promise<IDBDatabase> {
-    // If we have a healthy connection, return it
-    if (_db) return _db;
+const STORES = {
+    HISTORY: 'history',
+    GEO: 'geo_shapes',
+} as const
 
-    return new Promise((resolve, reject) => {
-        // Increment version to trigger onupgradeneeded for new stores
-        const req = indexedDB.open('DroneHistoryDB', 5);
-
-        req.onupgradeneeded = (e: any) => {
-            const db = e.target.result;
-
-            // 1. History Store
-            if (!db.objectStoreNames.contains('history')) {
-                const store = db.createObjectStore('history', { keyPath: ['nid', 'timestamp'] });
-                store.createIndex('nid_timestamp', ['nid', 'timestamp']);
-            }
-
-            // 2. Geo Shapes Store
-            if (!db.objectStoreNames.contains('geo_shapes')) {
-                db.createObjectStore('geo_shapes', { keyPath: 'id' });
-            }
-        };
-
-        req.onsuccess = () => {
-            _db = req.result;
-
-            _db.onclose = () => { _db = null; };
-            _db.onversionchange = () => {
-                _db?.close();
-                _db = null;
-            };
-
-            resolve(_db);
-        };
-        req.onerror = (e) => reject(e);
-    });
+function validateSchema(db: IDBDatabase) {
+    if (
+        !db.objectStoreNames.contains(STORES.HISTORY) ||
+        !db.objectStoreNames.contains(STORES.GEO)
+    ) {
+        db.close()
+        indexedDB.deleteDatabase(DB_NAME)
+        throw new Error('IndexedDB schema mismatch')
+    }
 }
 
-const CHUNK_SIZE = 1000;
+async function initDB(): Promise<IDBDatabase> {
+    if (_db) {
+        validateSchema(_db)
+        return _db
+    }
+
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION)
+
+        req.onupgradeneeded = (e: IDBVersionChangeEvent) => {
+            const db = (e.target as IDBOpenDBRequest).result
+
+            if (!db.objectStoreNames.contains(STORES.HISTORY)) {
+                const store = db.createObjectStore(STORES.HISTORY, {
+                    keyPath: ['nid', 'timestamp'],
+                })
+                store.createIndex('nid_timestamp', ['nid', 'timestamp'])
+            }
+
+            if (!db.objectStoreNames.contains(STORES.GEO)) {
+                db.createObjectStore(STORES.GEO, { keyPath: 'id' })
+            }
+        }
+
+        req.onsuccess = () => {
+            const db = req.result
+            try {
+                validateSchema(db)
+            } catch (err) {
+                reject(err)
+                return
+            }
+
+            _db = db
+            _db.onclose = () => { _db = null }
+            _db.onversionchange = () => {
+                _db?.close()
+                _db = null
+            }
+
+            resolve(_db)
+        }
+
+        req.onerror = () => reject(req.error)
+    })
+}
+
+const CHUNK_SIZE = 1000
 
 self.onmessage = async (e: MessageEvent) => {
-    const { type, payload } = e.data;
+    const { type, payload } = e.data
 
     try {
-        const db = await initDB();
+        const db = await initDB()
 
         switch (type) {
             case 'WRITE_BATCH':
-                try {
-                    for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
-                        const chunk = payload.slice(i, i + CHUNK_SIZE);
+                for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
+                    const chunk = payload.slice(i, i + CHUNK_SIZE)
 
-                        await new Promise<void>((resolve, reject) => {
-                            const tx = db.transaction('history', 'readwrite');
-                            const store = tx.objectStore('history');
+                    await new Promise<void>((resolve, reject) => {
+                        const tx = db.transaction(STORES.HISTORY, 'readwrite')
+                        const store = tx.objectStore(STORES.HISTORY)
 
-                            chunk.forEach((entry: any) => store.put(entry));
+                        chunk.forEach((entry: any) => store.put(entry))
 
-                            tx.oncomplete = () => resolve();
-                            tx.onerror = (err) => reject(err);
-                            tx.onabort = () => reject(new Error("Transaction Aborted"));
-                        });
+                        tx.oncomplete = () => resolve()
+                        tx.onerror = () => reject(tx.error)
+                        tx.onabort = () => reject(tx.error)
+                    })
 
-                        const progress = Math.round(((i + chunk.length) / payload.length) * 100);
-                        postMessage({ type: 'WRITE_PROGRESS', payload: progress });
-                    }
-                    postMessage({ type: 'WRITE_COMPLETE' });
-                } catch (error: any) {
-                    _db = null;
-                    const msg = error?.message || String(error);
-                    postMessage({ type: 'WRITE_ERROR', payload: msg });
+                    const progress = Math.round(((i + chunk.length) / payload.length) * 100)
+                    postMessage({ type: 'WRITE_PROGRESS', payload: progress })
                 }
-                break;
+
+                postMessage({ type: 'WRITE_COMPLETE' })
+                break
 
             case 'SAVE_SHAPE': {
-                const tx = db.transaction('geo_shapes', 'readwrite');
-                tx.objectStore('geo_shapes').put(payload);
-                break;
+                const tx = db.transaction(STORES.GEO, 'readwrite')
+                tx.objectStore(STORES.GEO).put(payload)
+                break
             }
 
             case 'DELETE_SHAPE': {
-                const tx = db.transaction('geo_shapes', 'readwrite');
-                tx.objectStore('geo_shapes').delete(payload);
-                break;
+                const tx = db.transaction(STORES.GEO, 'readwrite')
+                tx.objectStore(STORES.GEO).delete(payload)
+                break
             }
 
             case 'CLEAR_SHAPES': {
-                const tx = db.transaction('geo_shapes', 'readwrite');
-                tx.objectStore('geo_shapes').clear();
-                break;
+                const tx = db.transaction(STORES.GEO, 'readwrite')
+                tx.objectStore(STORES.GEO).clear()
+                break
             }
 
             case 'GET_ALL_SHAPES': {
-                const tx = db.transaction('geo_shapes', 'readonly');
-                const req = tx.objectStore('geo_shapes').getAll();
+                const tx = db.transaction(STORES.GEO, 'readonly')
+                const req = tx.objectStore(STORES.GEO).getAll()
                 req.onsuccess = () => {
-                    postMessage({ type: 'ALL_SHAPES_RESULT', payload: req.result });
-                };
-                req.onerror = (err) => {
-                    throw err;
-                };
-                break;
+                    postMessage({ type: 'ALL_SHAPES_RESULT', payload: req.result })
+                }
+                req.onerror = () => {
+                    postMessage({ type: 'WORKER_ERROR', payload: req.error?.message })
+                }
+                break
             }
         }
     } catch (error: any) {
-        _db = null;
-        console.error("Worker Global Error:", error);
-
-        // Ensure the error sent to main thread is a plain string/object
-        const errorMessage = error?.message || String(error);
-        postMessage({ type: 'WORKER_ERROR', payload: errorMessage });
+        _db = null
+        postMessage({
+            type: 'WORKER_ERROR',
+            payload: error?.message || String(error),
+        })
     }
-};
+}
 
-export { };
+export { }

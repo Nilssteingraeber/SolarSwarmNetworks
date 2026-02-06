@@ -4,7 +4,7 @@ import { OhVueIcon } from 'oh-vue-icons'
 import { ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import GeoItemList from './GeoItemList.vue'
-import { useDroneEntityStore } from '../../DronesData/DroneEntityStore'
+import { useDroneEntityStore } from '../../dronesData/DroneEntityStore'
 import { useGeoToolsStore, SelectedTool } from '../../stores/GeoToolsStore'
 
 // --- Main categories ---
@@ -83,7 +83,6 @@ const categories: CategoryItem[] = [
 
 // --- Watch tool selection ---
 watch(currentTool, (newValue) => {
-    console.log(newValue)
     geoStore.setTool(newValue)
 })
 

@@ -1,0 +1,26 @@
+[0.471s] Invoking command in '/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/src/turtle_subscriber': PYTHONPATH=/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/turtle_subscriber build --build-base /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/build install --record /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/install.log --single-version-externally-managed install_data
+[0.613s] running egg_info
+[0.622s] writing ../../build/turtle_subscriber/turtle_subscriber.egg-info/PKG-INFO
+[0.623s] writing dependency_links to ../../build/turtle_subscriber/turtle_subscriber.egg-info/dependency_links.txt
+[0.624s] writing entry points to ../../build/turtle_subscriber/turtle_subscriber.egg-info/entry_points.txt
+[0.624s] writing requirements to ../../build/turtle_subscriber/turtle_subscriber.egg-info/requires.txt
+[0.624s] writing top-level names to ../../build/turtle_subscriber/turtle_subscriber.egg-info/top_level.txt
+[0.642s] reading manifest file '../../build/turtle_subscriber/turtle_subscriber.egg-info/SOURCES.txt'
+[0.642s] adding license file 'LICENSE'
+[0.643s] writing manifest file '../../build/turtle_subscriber/turtle_subscriber.egg-info/SOURCES.txt'
+[0.644s] running build
+[0.644s] running build_py
+[0.644s] copying turtle_subscriber/api_turtle_pose_subscriber.py -> /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/build/lib/turtle_subscriber
+[0.645s] running install
+[0.647s] running install_lib
+[0.658s] copying /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/build/lib/turtle_subscriber/api_turtle_pose_subscriber.py -> /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages/turtle_subscriber
+[0.659s] byte-compiling /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages/turtle_subscriber/api_turtle_pose_subscriber.py to api_turtle_pose_subscriber.cpython-312.pyc
+[0.660s] running install_data
+[0.660s] running install_egg_info
+[0.670s] removing '/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages/turtle_subscriber-0.0.0-py3.12.egg-info' (and everything under it)
+[0.670s] Copying ../../build/turtle_subscriber/turtle_subscriber.egg-info to /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages/turtle_subscriber-0.0.0-py3.12.egg-info
+[0.671s] running install_scripts
+[0.737s] Installing api_subscriber script to /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/turtle_subscriber
+[0.738s] Installing subscriber script to /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/turtle_subscriber
+[0.738s] writing list of installed files to '/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/install.log'
+[0.755s] Invoked command in '/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/src/turtle_subscriber' returned '0': PYTHONPATH=/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/install/turtle_subscriber/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/turtle_subscriber build --build-base /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/build install --record /home/vboxuser/Documents/SoftwarePrakt/SolarSwarm-Node-Visualizer/ros_ws/build/turtle_subscriber/install.log --single-version-externally-managed install_data
