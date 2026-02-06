@@ -1,22 +1,20 @@
 <script setup lang="ts">
-import { MDBRow, MDBCol } from 'mdb-vue-ui-kit'
+import { MDBRow, MDBCol, MDBBtn } from 'mdb-vue-ui-kit' // Added MDBBtn
 import { OhVueIcon } from 'oh-vue-icons'
 import { ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useGeoToolsStore, SelectedTool } from '@/stores/GeoToolsStore'
 import GeoItemList from './GeoItemList.vue'
+import { useDroneEntityStore } from '../../dronesData/DroneEntityStore'
+import { useGeoToolsStore, SelectedTool } from '../../stores/GeoToolsStore'
 
 // --- Main categories ---
 enum MainCategory {
-    None,
-    New,
-    Delete,
-    Edit,
-    List,
+    None, New, Delete, Edit, List,
 }
 
 // --- Store ---
 const geoStore = useGeoToolsStore()
+const droneEntityStore = useDroneEntityStore()
 const { isOpen } = storeToRefs(geoStore)
 
 // --- Local state ---
@@ -24,33 +22,25 @@ const currentCategory = ref<MainCategory>(MainCategory.None)
 const currentTool = ref<SelectedTool>(SelectedTool.None)
 
 // --- Methods ---
-const closeTools = () => geoStore.toggleOpen()
+const closeMenu = () => geoStore.setOpen(false)
 
 const isCategorySelected = (cat: MainCategory) => currentCategory.value === cat
-const isToolSelected = (tool: SelectedTool) => currentTool.value === tool
+const isToolSelected = (tool: SelectedTool) => geoStore.activeTool === tool;
 
 const selectCategory = (cat: MainCategory) => {
     currentCategory.value = currentCategory.value === cat ? MainCategory.None : cat
-    currentTool.value = SelectedTool.None
+    if (currentCategory.value !== MainCategory.None) {
+        currentTool.value = SelectedTool.None
+    }
 }
 
 const selectTool = (tool: SelectedTool) => {
     currentTool.value = currentTool.value === tool ? SelectedTool.None : tool
 }
 
-// --- Generic categories and tools ---
-interface ToolItem {
-    name: string
-    icon: string
-    tool: SelectedTool
-}
-
-interface CategoryItem {
-    category: MainCategory
-    name: string
-    icon: string
-    tools?: ToolItem[]
-}
+// --- Configuration ---
+interface ToolItem { name: string; icon: string; tool: SelectedTool }
+interface CategoryItem { category: MainCategory; name: string; icon: string; tools?: ToolItem[] }
 
 const categories: CategoryItem[] = [
     {
@@ -58,18 +48,22 @@ const categories: CategoryItem[] = [
         name: 'New',
         icon: 'bi-file-earmark',
         tools: [
+            { name: 'Marker', icon: 'gi-position-marker', tool: SelectedTool.Marker },
             { name: 'Plane', icon: 'bi-square-fill', tool: SelectedTool.Plane },
             { name: 'Circle', icon: 'fa-circle', tool: SelectedTool.Circle },
-            { name: 'Sphere', icon: 'fa-circle', tool: SelectedTool.Sphere },
-            { name: 'Line', icon: 'md-polyline-round', tool: SelectedTool.Line },
-            { name: 'Polygon', icon: 'la-draw-polygon-solid', tool: SelectedTool.Polygon },
+            { name: 'Sphere', icon: 'fa-globe', tool: SelectedTool.Sphere },
+            { name: 'Line', icon: 'md-polyline', tool: SelectedTool.Line },
+            { name: 'Polygon', icon: 'fa-draw-polygon', tool: SelectedTool.Polygon },
         ],
     },
-
     {
         category: MainCategory.Delete,
         name: 'Delete',
         icon: 'ri-delete-bin-7-line',
+        // Added the tool here so it shows up in the sub-menu
+        tools: [
+            { name: 'Eraser', icon: 'fa-eraser', tool: SelectedTool.Delete }
+        ]
     },
     {
         category: MainCategory.Edit,
@@ -87,20 +81,21 @@ const categories: CategoryItem[] = [
     },
 ]
 
-const closeMenu = () => {
-    geoStore.setOpen(false)
-}
-
 // --- Watch tool selection ---
 watch(currentTool, (newValue) => {
     geoStore.setTool(newValue)
+})
+
+// Clear tool when menu closes
+watch(isOpen, (val) => {
+    if (!val) currentTool.value = SelectedTool.None
 })
 </script>
 
 <template>
     <MDBRow class="side-menu-root menu justify-content-end" :class="{ 'menu-closed': !isOpen }">
         <MDBCol class="col-auto text-center h-100 d-flex flex-column flex-grow-1">
-            <!-- Header row (fixed at top of menu) -->
+
             <MDBRow class="flex justify-content-between align-items-center header-row">
                 <MDBCol class="col-auto title">Editing Tools</MDBCol>
                 <MDBCol />
@@ -109,10 +104,8 @@ watch(currentTool, (newValue) => {
                 </MDBCol>
             </MDBRow>
 
-            <!-- Scrollable content -->
             <MDBRow class="menu-content flex-grow-1 overflow-auto custom-scroll">
                 <MDBCol>
-                    <!-- Category buttons -->
                     <MDBRow class="text-start p-2">
                         <MDBCol v-for="cat in categories" :key="cat.category"
                             class="col-auto mx-2 toggle-button rounded no-select"
@@ -120,7 +113,7 @@ watch(currentTool, (newValue) => {
                             @click="selectCategory(cat.category)">
                             <MDBRow class="justify-content-center mt-2">
                                 <MDBCol class="col-auto battery-center">
-                                    <OhVueIcon :name="cat.icon" scale="1.5" />
+                                    <OhVueIcon :cat-icon="cat.icon" :name="cat.icon" scale="1.5" />
                                 </MDBCol>
                             </MDBRow>
                             <MDBRow class="justify-content-center">
@@ -131,11 +124,9 @@ watch(currentTool, (newValue) => {
                         </MDBCol>
                     </MDBRow>
 
-                    <!-- Tools or list under selected category -->
                     <MDBRow class="shape-select m-0 mb-3"
                         :class="{ 'shape-select-closed': !isCategorySelected(currentCategory) }">
 
-                        <!-- Show tools for New/Edit -->
                         <MDBCol v-for="tool in categories.find(c => c.category === currentCategory)?.tools || []"
                             :key="tool.tool" class="col-auto rounded toggle-button-small m-2"
                             :class="{ 'toggle-button-selected outline-animated': isToolSelected(tool.tool) }"
@@ -152,23 +143,28 @@ watch(currentTool, (newValue) => {
                             </MDBRow>
                         </MDBCol>
 
-                        <!-- Show list only when List category is active -->
-                        <MDBCol v-if="isCategorySelected(MainCategory.List)">
+                        <MDBCol v-if="isCategorySelected(MainCategory.List)" class="col-12">
                             <GeoItemList />
                         </MDBCol>
                     </MDBRow>
                 </MDBCol>
             </MDBRow>
+
+            <MDBRow class="p-2 mt-auto rounded-bottom">
+                <MDBCol class="d-flex justify-content-end">
+                    <MDBBtn size="sm" color="danger"
+                        @click="droneEntityStore.viewer && geoStore.clearAll(droneEntityStore.viewer)">
+                        Reset DB
+                    </MDBBtn>
+                    <MDBBtn size="sm" color="primary" @click="geoStore.exportToJson()">
+                        Export JSON
+                    </MDBBtn>
+                </MDBCol>
+            </MDBRow>
+
         </MDBCol>
     </MDBRow>
 </template>
-
-<style scoped>
-/* your existing styles (unchanged) */
-</style>
-
-
-
 
 <style scoped>
 .min-graph-height {

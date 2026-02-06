@@ -9,7 +9,6 @@ export interface Robot {
     ipv6?: string;
     mac?: string;
 
-    // Optional nested relationships
     statuses?: Status[];
     state_changes?: StateChange[];
     state?: State;
@@ -20,9 +19,9 @@ export interface Status {
     robot_id: number;
     battery?: number;
     cpu_1?: number;
-    point?: Record<string, any>;      // JSON field
-    orientation?: Record<string, any>; // JSON field
-    last_heard?: number;              // Unix timestamp
+    point?: Record<string, any>;
+    orientation?: Record<string, any>;
+    last_heard?: number;
 
     robot?: Robot;
 }
@@ -48,7 +47,7 @@ export interface StateChange {
     change_id: number;
     state_id: number;
     robot_id: number;
-    begin?: number; // Unix timestamp
+    begin?: number;
 
     state?: State;
     robot?: Robot;

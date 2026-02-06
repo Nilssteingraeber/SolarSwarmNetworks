@@ -1,105 +1,84 @@
+// src/stores/GeoToolsStore.ts
 import { defineStore } from "pinia"
 import { ref } from "vue"
 import * as Cesium from "cesium"
-import { GeoForm, GeoLocation } from "../models/GeoForm"
+import { GeoForm } from "../models/GeoForm"
+import { geoWorkerService } from "../components/GeoEditing/GeoWorkerServices"
 
-// --- Entity bindings ---
 export interface EntityBinding {
-    polygon?: Cesium.Entity
-    label?: Cesium.Entity
+    primary: Cesium.Entity
+    labels: Cesium.Entity[]
+    outline?: Cesium.Entity
 }
 
-// --- Generic Tool Enum ---
 export enum SelectedTool {
-    None,
-    Plane,
-    Circle,
-    Sphere,
-    Line,
-    Polygon,
-    Move,
-    Rotate,
-}
-
-// --- Map enum to Cesium-compatible tool strings ---
-const toolToCesiumMap: Record<
-    SelectedTool,
-    "none" | "point" | "line" | "polygon" | "circle" | "measure" | "plane"
-> = {
-    [SelectedTool.None]: "none",
-    [SelectedTool.Plane]: "plane",
-    [SelectedTool.Circle]: "circle",
-    [SelectedTool.Sphere]: "measure",
-    [SelectedTool.Line]: "line",
-    [SelectedTool.Polygon]: "polygon",
-    [SelectedTool.Move]: "none",
-    [SelectedTool.Rotate]: "none",
+    None, Marker, Plane, Circle, Sphere, Line, Polygon, Move, Rotate, Delete
 }
 
 export const useGeoToolsStore = defineStore("geoTools", () => {
-    // --- UI state ---
     const isOpen = ref(false)
-    const activeTool = ref<
-        "none" | "point" | "line" | "polygon" | "circle" | "measure" | "plane"
-    >("circle")
-
-    // --- Forms ---
+    const activeTool = ref<SelectedTool>(SelectedTool.None)
     const forms = ref<GeoForm[]>([])
+    // Map ID -> Cesium Entities (so we can remove them from screen)
     const entityList = new Map<string, EntityBinding>()
-    const selectedFormId = ref<string | null>(null)
 
-    // --- Actions ---
     const toggleOpen = () => (isOpen.value = !isOpen.value)
     const setOpen = (v: boolean) => (isOpen.value = v)
+    const setTool = (tool: SelectedTool) => activeTool.value = tool
 
-    // Accept either literal string or SelectedTool enum
-    const setTool = (tool: typeof activeTool.value | SelectedTool) => {
-        if (typeof tool === "number") {
-            activeTool.value = toolToCesiumMap[tool]
-        } else {
-            activeTool.value = tool
-        }
-    }
-
-    const clearTool = () => (activeTool.value = "circle")
-    const isActive = (tool: typeof activeTool.value) => activeTool.value === tool
+    // --- Actions ---
 
     const addForm = (form: GeoForm, entities: EntityBinding) => {
         forms.value.push(form)
         entityList.set(form.id, entities)
+        // Persist via Worker
+        geoWorkerService.saveShape(form)
     }
 
-    const deleteForm = (form: Cesium.Entity) => {
-        entityList.delete(form.id)
-        forms.value = forms.value.filter(f => f.id !== form.id)
+    const deleteForm = (id: string, viewer: Cesium.Viewer) => {
+        const binding = entityList.get(id)
+        if (binding) {
+            viewer.entities.remove(binding.primary)
+            binding.labels.forEach(l => viewer.entities.remove(l))
+            if (binding.outline) viewer.entities.remove(binding.outline)
+        }
+        entityList.delete(id)
+        forms.value = forms.value.filter(f => f.id !== id)
+
+        // Remove from DB via Worker
+        geoWorkerService.deleteShape(id)
     }
 
-    const selectForm = (id: string | null) => {
-        selectedFormId.value = id
+    const clearAll = (viewer: Cesium.Viewer) => {
+        entityList.forEach((binding) => {
+            viewer.entities.remove(binding.primary);
+            binding.labels.forEach(l => viewer.entities.remove(l));
+        });
+        entityList.clear();
+        forms.value = [];
+        geoWorkerService.clearAll();
     }
 
-    const computeGeoCenter = (points: GeoLocation[]) => {
-        return Cesium.BoundingSphere.fromPoints(points.map(p =>
-            Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.height)
-        )).center;
+    const loadFromDisk = async () => {
+        const loaded = await geoWorkerService.getAllShapes();
+        forms.value = loaded;
+        return loaded; // Return to component so it can draw them
     }
 
+    const exportToJson = () => {
+        const dataStr = JSON.stringify(forms.value, null, 2);
+        const blob = new Blob([dataStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `geotools_export.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+    }
 
     return {
-        isOpen,
-        activeTool,
-        toggleOpen,
-        setOpen,
-        setTool,
-        clearTool,
-        isActive,
-
-        forms,
-        entityList,
-        selectedFormId,
-        deleteForm,
-        addForm,
-        selectForm,
-        computeGeoCenter,
+        isOpen, activeTool, forms, entityList,
+        toggleOpen, setOpen, setTool,
+        addForm, deleteForm, clearAll, loadFromDisk, exportToJson
     }
 })

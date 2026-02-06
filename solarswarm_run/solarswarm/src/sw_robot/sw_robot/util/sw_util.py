@@ -11,7 +11,7 @@ class BaseStatusSub(ABC, Node):
         super().__init__("robot_status_sub")
 
         # parameters
-        self.declare_parameter('batch_intervall', 10.0, ParameterDescriptor(description='Time it takes the data sink to forward the next batch.'))
+        self.declare_parameter('batch_intervall', 5.0, ParameterDescriptor(description='Time it takes the data sink to forward the next batch.'))
         
         # subscriptions
         self.__subscription_dict = {}
@@ -59,26 +59,31 @@ class BaseStatusSub(ABC, Node):
         return False
 
 
-    # methods
+        # methods
     def connect_db(self) -> bool:
         try:
-            if not self.conn or self.conn.closed:
-                self.__conn = psycopg2.connect(
-                    dbname = getenv('DB_NAME'),
-                    user = getenv('DB_USER'),
-                    password = getenv('DB_PASSWORD'),
-                    host = getenv('DB_HOST'),
-                    port = getenv('DB_PORT'))
-                print('Connection to db successful')
-                return True
+            # If connection object exists, check if it's actually open (closed == 0)
+            if self.__conn is not None:
+                if self.__conn.closed == 0:
+                    return True
+                else:
+                    # Connection exists but is dead (e.g. after a DB restart)
+                    self.get_logger().warn('Database connection lost. Resetting...')
+                    self.__conn = None 
+
+            # Attempt new connection
+            self.__conn = psycopg2.connect(
+                dbname = getenv('DB_NAME'),
+                user = getenv('DB_USER'),
+                password = getenv('DB_PASSWORD'),
+                host = getenv('DB_HOST'),
+                port = getenv('DB_PORT')
+            )
+            self.get_logger().info('Database connection established.')
+            return True
         except Exception as e:
-            print('Connection to db failed:', e)
-            try:
-                self.get_logger().error('Connection to db failed: %s', (e,))
-            except:
-                pass
+            self.get_logger().error(f'Database connection failed: {e}')
             return False
-        return True
 
     def check_nid(self, nid) -> bool:
         # May be used in callback functions to check if a nid exists in nodes.

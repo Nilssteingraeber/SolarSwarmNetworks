@@ -18,6 +18,8 @@ from custom_interfaces.msg import RobotMisc
 from custom_interfaces.msg import NeighborList
 
 from custom_interfaces.srv import StrToLowerUpperService
+from custom_interfaces.srv import CommandToPositionService
+from custom_interfaces.srv import GetCurrentPositionService
 
 from typing import Set
 from datetime import datetime
@@ -30,7 +32,7 @@ from mock_robot.util.mock_position import MockPosition
 import logging
 
 logging.basicConfig(
-    filename="/home/ubuntu/logs/robot.log",
+    filename="/var/tmp/solarswarm/logs/robot.log",
     level=logging.INFO,
     format="[mock_data] %(levelname)s: %(message)s (%(asctime)s)",
 ) # formatting options: https://docs.python.org/3/library/logging.html#logrecord-attributes
@@ -71,12 +73,11 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
 
 
         self.create_service(StrToLowerUpperService, 'str_to_lower_upper_%s' % (nid,), self.str_to_lower_upper_callback)
+        self.create_service(CommandToPositionService, 'command_to_position_service_%s' % (nid,), self.command_to_position_service_callback)
+        self.create_service(GetCurrentPositionService, 'get_current_position_service_%s' % (nid,), self.get_current_position_service_callback)
 
 
-    def str_to_lower_upper_callback(self, request, response):
-        response.lower = request.data.lower()
-        response.upper = request.data.upper()
-        return response
+
 
 
     # service callbacks
@@ -148,6 +149,38 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
                 self.get_logger().error('Error in interface_info_callback: %s' % (e,))
         return response
     
+    def str_to_lower_upper_callback(self, request, response):
+        response.lower = request.data.lower()
+        response.upper = request.data.upper()
+        return response
+    
+    def command_to_position_service_callback(self, request, response):
+        try:
+
+            target_lat = float(request.lat)
+            target_lon = float(request.lon)
+            
+            self.points = [array([target_lat, target_lon])]
+            self.goal = 0
+            
+            self.activity = 'MoveToPosition'
+            
+            response.msg = f'Successfully commanded to Lat: {target_lat}, Lon: {target_lon}'
+            
+        except ValueError:
+            self.get_logger().error('Received non-numeric strings for lat/lon')
+            response.msg = 'Error: Latitude and Longitude must be numeric strings.'
+        except Exception as e:
+            self.get_logger().error(f'Service failed: {str(e)}')
+            response.msg = f'Service failed: {str(e)}'
+            
+        return response
+    
+    def get_current_position_service_callback(self, request, response):
+        response.lat = str(float(self.current[0]))
+        response.lon = str(float(self.current[1]))
+        response.alt = str(float(125.0))
+        return response
     
     # timer callbacks
     def system_timer_callback(self):
@@ -172,12 +205,17 @@ class MockRobotStatusPub(BaseStatusPub, MockPosition):
     def geo_timer_callback(self):
         # point
         # simulate movement towards coordinate goal
-        if not self.activity in ('Idle', 'Charging'):
-            if self.advance_position(): # True if point is reached
-                if self.activity == 'Working':
-                    self.goal = (self.goal+1) % len(self.points) # determine next goal (cylce back to first)
-                elif self.activity == 'MoveToPoint': # wait after 'MoveToPoint'
-                    self.activity = 'Idle'
+        if self.activity not in ('Idle', 'Charging'):
+                    # advance_position() returns True when the current goal is reached
+                    if self.advance_position(): 
+                        if self.activity == 'Working':
+                            # Cycle through the route
+                            self.goal = (self.goal + 1) % len(self.points)
+                        elif self.activity == 'MoveToPosition':
+                            # We reached the commanded point, now stop and wait
+                            self.get_logger().info('Commanded position reached. Switching to Idle.')
+                            self.activity = 'Idle'
+
         msg = RobotPoint()
         msg.x = float(self.current[0]) # beware: arrays contain numpy.float objects, but msg requires normal float
         msg.y = float(self.current[1])

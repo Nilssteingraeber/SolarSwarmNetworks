@@ -1,0 +1,10 @@
+# these envs are used by base_robot
+# envs can not be passed to services in a swarm, as the manager deploying a stack sets them
+# services using them should set envs inside the container (i.e. via entrypoint script)
+# see base_robot_init.bash for an example
+# base_robot writes lines not containing a # to /etc/environment, otherwise they are cut from the file in th container
+WLANDEV=?
+MESH_IDENTITY=?
+MESH_IP=?
+HOST_MAC=?
+# IW_DEV # already has an absolite path

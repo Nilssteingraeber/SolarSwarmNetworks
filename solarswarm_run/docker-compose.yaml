@@ -34,13 +34,12 @@ services:
       dockerfile: base_robot/base_robot.Dockerfile
       # network: host
     volumes:
-      - ./tmp/iw_dump/:/home/ubuntu/iw_dump/
-      - ./logs/:/home/ubuntu/logs/
+      - /var/tmp/solarswarm/iw_dump/:/var/tmp/solarswarm/iw_dump/
+      - /var/tmp/solarswarm/logs/:/var/tmp/solarswarm/logs/
     networks:
       - internal # temporary for testing
     environment:
-      - MESH_IP=${MESH_IP}
-      - HOST_MAC=${HOST_MAC}
+      - IW_DUMP=/var/tmp/solarswarm/iw_dump/iw_dump.txt
   
   data_sink:
     image: data_sink
@@ -49,12 +48,12 @@ services:
       dockerfile: data_sink/sw_robot.Dockerfile
       # network: host
     volumes:
-      - ./logs/:/home/ubuntu/logs/
+      - /var/tmp/solarswarm/logs/:/var/tmp/solarswarm/logs/
     networks:
       - internal
     environment:
       # data sink
-      LOG_OUT: /home/ubuntu/logs/data_sink.log
+      LOG_OUT: /var/tmp/solarswarm/logs/data_sink.log
       FORWARD_TO_DB: forward
       TRIES_TO_GET_STATES: 2
       # DB
@@ -107,12 +106,6 @@ services:
       ROS_DISTRO: jazzy
     ports:
       - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - ./backend/backend:/app
-      #- ./logs/:/tmp/logs/
     networks:
       - internal
 
@@ -194,7 +187,10 @@ services:
       - internal
 
   ### OpenStreetMap-Data Server ###
-  # TODO OSM-License
+  # License: https://www.openstreetmap.org/copyright
+  # https://download.geofabrik.de/europe/germany/nordrhein-westfalen.html
+  # https://github.com/systemed/tilemaker
+  # 
   tileserver:
     image: tileserver
     build:

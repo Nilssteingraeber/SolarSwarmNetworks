@@ -252,8 +252,8 @@ elif [ $state == "inactive" ]; then
                         labels_target="/home/$hostname/solarswarm_setup/docker/"
                         if scp $SSH_TIMEOUT $HOST_CHECKING $LABELS_LOCATION $hostname:$labels_target; then ((count_sent++));fi
                     done
-                    required_count=(($manager_count/2 + 1))
-                    if [ $count_sent -ge $(($required_count)) ]; then
+                    required_count=$(($manager_count/2 + 1))
+                    if [ $count_sent -ge $required_count ]; then
                         break
                     else
                         echo "[docker_init] Could not send labels file to at least $required_count managers ($count_sent/$manager_count)"

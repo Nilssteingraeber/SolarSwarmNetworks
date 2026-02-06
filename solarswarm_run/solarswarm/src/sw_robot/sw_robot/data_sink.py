@@ -21,7 +21,7 @@ from os import getenv
 
 FORWARD_TO_DB = getenv('FORWARD_TO_DB') # forward to DB unless not set to anything
 env = getenv('TRIES_TO_GET_STATES')
-TRIES_TO_GET_STATES = int(env) if env and env.isnumeric else 1
+TRIES_TO_GET_STATES = int(env) if env and env.isnumeric else 12
 
 import logging
 
@@ -58,9 +58,10 @@ class RobotStatusSub(BaseStatusSub):
                             for row in cursor.fetchall():
                                 # row[0] = id, row[1] = description
                                 self.__state_map[row[1]] = row[0]
+                            break
                         else:
                             logging.warning('Table state contained no entries')
-                    break
+                            sleep(5)
                 except Exception as e:
                     logging.error('Failed to get states from DB: %s', (e,))
                     logging.info('Trying again in 10s')

@@ -37,6 +37,8 @@ set(files
   "srv/IntAvgService.srv"
   "srv/IntRngService.srv"
   "srv/StrToLowerUpperService.srv"
+  "srv/CommandToPositionService.srv"
+  "srv/GetCurrentPositionService.srv"
 )
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${files}

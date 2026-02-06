@@ -7,19 +7,19 @@ class MockPosition(object):
         # mock routes for mock coordinates
         # decimals calculated as d(a°b'c") = a + b/60 + c/3600
         # movement is calculated by treating coordinates as points/vectors in a two-dimensional vector space 
-        start = array([51.450388888888895, 7.276472222222222]) # 51°27'01.4"N 7°16'35.3"E
+        self.start_coord = array([51.450388888888895, 7.276472222222222]) # 51°27'01.4"N 7°16'35.3"E
         self.__goal = 1 # index of next point in self.points
         self.__max_vec_len = 5.288731323495855e-05 # = distance between start and arbitrary point nearby/12
         self.__mock_routes = [ # has to have at least one route
             # sample route (line) using start as a starting point
-            [start, # pass by value
+            [self.start_coord, # pass by value
                 array([51.44927777777777, 7.2773055555555555])], # 51°26'57.4"N 7°16'38.3"E
             # sample route (triangle) using start as a starting point
-            [start,
+            [self.start_coord,
                 array([51.451, 7.276833333333333]), # 51°27'03.6"N 7°16'36.6"E
                 array([51.45080555555556, 7.276083333333333])], # 51°27'02.9"N 7°16'33.9"
             # sample route (quadrangle) using start as a starting point
-            [start,
+            [self.start_coord,
                 array([51.45063888888889, 7.277055555555555]), # 51°27'02.3"N 7°16'37.4"E
                 array([51.451, 7.276833333333333]), # 51°27'03.6"N 7°16'36.6"E
                 array([51.45080555555556, 7.276083333333333])], # 51°27'02.9"N 7°16'33.9"E

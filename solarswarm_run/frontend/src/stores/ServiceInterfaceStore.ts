@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ParsedInterface } from '../DronesData/NodeRosInterfaces'
+import type { ParsedInterface } from '../dronesData/DronesRosInterfaces'
 
 export type NamedParsedInterface = {
     serviceName: string

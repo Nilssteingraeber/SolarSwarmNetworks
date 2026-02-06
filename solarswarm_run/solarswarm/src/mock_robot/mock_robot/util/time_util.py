@@ -5,7 +5,7 @@ class TimeUtil(object):
     @classmethod
     def get_timestamp(cls) -> int:
         # returns utc timestamp as int
-        return int(datetime.now(ZoneInfo("Europe/Berlin")).timestamp())
+        return round(datetime.now(ZoneInfo("Europe/Berlin")).timestamp() * 1000)
 
     @classmethod
     def get_datetime_f(cls) -> str:

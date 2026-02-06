@@ -8,7 +8,6 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 export default defineConfig({
   plugins: [
     vue({ ...templateCompilerOptions }),
-    vueDevTools(),
   ],
 
   assetsInclude: ["**/*.glb"],
@@ -20,15 +19,14 @@ export default defineConfig({
   },
 
   build: {
-    outDir: 'dist',
-    assetsDir: 'assets',
+    outDir: './dist',
+    assetsDir: './assets',
     rollupOptions: {
       output: {
-        // keep all JS chunks in /js
+
         entryFileNames: 'js/[name]-[hash].js',
         chunkFileNames: 'js/[name]-[hash].js',
 
-        // place CSS, images, and other assets in their own folders
         assetFileNames: ({ name }) => {
           if (/\.(gif|jpe?g|png|svg|webp|ico)$/.test(name ?? '')) {
             return 'images/[name]-[hash][extname]'
