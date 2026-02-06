@@ -7,7 +7,6 @@ import router from './router'
 
 import * as Icons from "oh-vue-icons/icons/";
 import { addIcons } from 'oh-vue-icons';
-import "leaflet/dist/leaflet.css";
 
 const icons = Object.values({ ...Icons });
 addIcons(...icons);

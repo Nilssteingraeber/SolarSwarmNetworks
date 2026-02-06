@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, shallowRef, computed } from 'vue'
 import * as d3 from 'd3'
-import { useDroneHistoryStore } from '../DronesData/DroneHistoryStore'
+import { useDroneHistoryStore } from '../dronesData/DroneHistoryStore'
 import type { Robot } from '../models/Robot'
 import { useTimeStore } from '../stores/TimeStore'
 import { OhVueIcon } from "oh-vue-icons";

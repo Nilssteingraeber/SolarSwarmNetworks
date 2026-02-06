@@ -169,7 +169,6 @@ const orbitRef = ref(null)
 watch(orbitRef, (newVal) => {
     if (newVal) {
         const controls = newVal.controls
-        console.log(controls)
     }
 })
 

@@ -1,10 +1,10 @@
 import { ref, computed, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { useDroneHistoryStore } from '../DronesData/DroneHistoryStore'
+import { useDroneHistoryStore } from '../dronesData/DroneHistoryStore'
 import { useTimeStore } from './TimeStore'
-import { DronesPollingService } from '../DronesData/DronesPollingService'
+import { DronesPollingService } from '../dronesData/DronesPollingService'
 import type { Robot } from '../models/Robot'
-import { useDroneEntityStore } from '../DronesData/DroneEntityStore'
+import { useDroneEntityStore } from '../dronesData/DroneEntityStore'
 
 /**
  * simpleThrottle: Vanilla implementation to limit function execution rate.

@@ -3,7 +3,7 @@ import { onMounted, ref, watch, nextTick, onUnmounted } from 'vue'
 import { Chart, LineController, LineElement, PointElement, LinearScale, Title, CategoryScale } from 'chart.js'
 import { MDBCol, MDBRow } from 'mdb-vue-ui-kit'
 import { UseViewedDroneStore } from '../../stores/viewedDroneStore'
-import { useDroneHistoryStore } from '../../DronesData/DroneHistoryStore'
+import { useDroneHistoryStore } from '../../dronesData/DroneHistoryStore'
 import { useTimeStore } from '../../stores/TimeStore'
 
 const props = defineProps<{
@@ -29,7 +29,7 @@ async function refreshChartData() {
     try {
         const currentTime = timeStore.currentTime
         const windowMs = 60_000
-        await historyStore.ensureDroneDataLoaded(nid, currentTime, windowMs)
+        await historyStore.ensureDroneDataLoaded(nid, currentTime)
 
         const history = historyStore.cache.get(nid)
         if (!history || history.length === 0) return
@@ -47,7 +47,7 @@ async function refreshChartData() {
         if (cpuChart) {
             cpuChart.data.labels = windowEntries.map(e => e.timestamp)
             cpuChart.data.datasets[0].data = windowEntries.map(e => (e.data as any)[props.dataFieldName])
-            cpuChart.update('none') // Smooth update without animation overhead
+            cpuChart.update('none')
         }
     } catch (error) {
         console.error('Chart refresh failed:', error)
@@ -61,12 +61,12 @@ onMounted(async () => {
 
     const ctx = chartRef.value!.getContext('2d')!
 
-    // Your existing plugins (unchanged)
     Chart.register({
         id: 'lineShadow',
         beforeDatasetDraw(chart, args) {
             const { ctx } = chart
             const dataset = chart.data.datasets[args.index]
+            // @ts-expect-error
             if (dataset.type === 'line' || chart.config.type === 'line') {
                 ctx.save()
                 ctx.shadowColor = 'rgba(0, 0, 0, 0.35)'
@@ -87,12 +87,12 @@ onMounted(async () => {
         afterDraw(chart: { ctx: any; chartArea: any; scales: any; data: any; }) {
             const { ctx, data } = chart
             const dataset = data.datasets[0]
-            const index = 28   // center ("now") index
+            const index = 28
             const value = dataset.data[index]
 
             if (value == null) return
 
-            // Get the point's pixel position
+            // @ts-expect-error
             const meta = chart.getDatasetMeta(0)
             const point = meta.data[index]
             if (!point) return
@@ -164,7 +164,6 @@ onMounted(async () => {
         }
     })
 
-    // Start 5s refresh
     updateTimer = window.setInterval(refreshChartData, 1000)
     refreshChartData()
 })
@@ -174,14 +173,10 @@ onUnmounted(() => {
     if (cpuChart) cpuChart.destroy()
 })
 
-// Watch drone & sim time changes
 watch([
     () => viewedDroneStore.viewedNid,
 ], refreshChartData, { immediate: true })
 </script>
-
-<!-- Template unchanged -->
-
 
 <template>
     <MDBRow class="mb-1 w-100 h-100">
@@ -262,6 +257,5 @@ watch([
         1px 1px 2px rgba(0, 0, 0, 0.8);
     z-index: 10;
     pointer-events: none;
-    /* so it never blocks mouse interactions */
 }
 </style>

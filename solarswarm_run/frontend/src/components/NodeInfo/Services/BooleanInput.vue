@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { defineProps, defineEmits, ref, watch } from 'vue';
-import { Service, DataType, ServiceInput } from '../../../models/Service';
+import { ServiceInput } from '../../../models/Service';
 
 const props = defineProps<{
     modelValue: string | null,
@@ -12,18 +12,16 @@ const emit = defineEmits<{
 }>();
 
 const inputValue = ref(props.modelValue);
-
 const isLoading = ref(true);
 
-// Keep internal value in sync with parent
 watch(() => props.modelValue, (newVal) => {
     inputValue.value = newVal;
 });
 
-// Emit changes to parent
 watch(inputValue, (newVal) => {
     emit('update:modelValue', newVal);
 });
+
 </script>
 
 <template>
@@ -35,12 +33,8 @@ watch(inputValue, (newVal) => {
 <style scoped>
 input[type="checkbox"]:hover {
     -webkit-appearance: none;
-    /* Chrome/Safari */
     -moz-appearance: none;
-    /* Firefox */
     appearance: none;
-    /* Standard */
-
     width: 1rem;
     height: 1rem;
     border: 1px solid #464646;
@@ -52,16 +46,10 @@ input[type="checkbox"]:hover {
 
 
 input[type="checkbox"] {
-
     transition: all 0.5s cubic-bezier(0.075, 0.82, 0.165, 1);
-
     -webkit-appearance: none;
-    /* Chrome/Safari */
     -moz-appearance: none;
-    /* Firefox */
     appearance: none;
-    /* Standard */
-
     width: 1rem;
     height: 1rem;
     border: 0.1px solid #464646;
@@ -73,7 +61,6 @@ input[type="checkbox"] {
 
 input[type="checkbox"]:checked {
     background-color: #000000b7;
-    /* highlight box when checked */
     border-color: #4b4b4b;
 }
 

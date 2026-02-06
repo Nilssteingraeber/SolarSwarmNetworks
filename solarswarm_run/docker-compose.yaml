@@ -187,7 +187,10 @@ services:
       - internal
 
   ### OpenStreetMap-Data Server ###
-  # TODO OSM-License
+  # License: https://www.openstreetmap.org/copyright
+  # https://download.geofabrik.de/europe/germany/nordrhein-westfalen.html
+  # https://github.com/systemed/tilemaker
+  # 
   tileserver:
     image: tileserver
     build:
