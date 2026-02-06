@@ -1,0 +1,61 @@
+@startuml
+package "rclpy.node" {
+  class Node
+}
+
+package "time_util" {
+  class TimeUtil {
+    {static} get_timestamp(): int
+    {static} get_datetime_f(): str
+  }
+}
+
+package "sw_util" {
+  class BaseStatusSub {
+    __please_override : str
+    __subscription_dict: dict
+    __batch_timer : rclpy.timer.Timer
+    __nodes : dict
+    __conn : connection
+    
+    @property nodes()
+    @property conn()
+    getSubscription(key)
+    createSubscription(key, cls, topic, callback, queue)
+    connect_db() : bool
+    check_nid(nid) : bool
+    validate_point(point) : bool
+    validate_quaternion(quat) : bool
+    validate_ipv4(ip) : bool
+    validate_ipv6(ip) : bool
+    validate_mac(mac) : bool
+    validate_neighbor(neighbor) : bool
+    validate_indicator(indicator) : bool
+    {abstract} subscription_callback(msg)
+    {abstract} forward_batch()
+    {abstract} batch_timer_callback()
+  }
+}
+
+note top of BaseStatusSub : "connect_db returns True if conn\n has a working connection"
+
+package "data_sink" {
+  class RobotStatusSub {
+    __nid_map : dict
+    __state_map : dict
+    
+    @property nid_map()
+    @property state_map()
+    register_new_nodes(cursor)
+    subscription_callback(msg)
+    forward_batch()
+    forward_batch_test()
+    check_nid(nid) : bool
+    batch_timer_callback()
+  }
+}
+
+Node <|-- BaseStatusSub
+BaseStatusSub <|-- RobotStatusSub
+TimeUtil <-- RobotStatusSub
+@enduml

@@ -1,0 +1,103 @@
+@startuml
+package "rclpy.node" {
+  class Node
+}
+
+package "time_util" {
+  class TimeUtil {
+    {static} get_timestamp(): int
+    {static} get_datetime_f(): str
+  }
+}
+
+package "robot_util" {
+  abstract class BaseStatusPub {
+    __please_override : str
+    __nid : int
+    __mac : int
+    __publisher_dict : dict
+    __service_dict : dict
+    __action_dict : dict
+    __allowed_activities : set
+    __activity : str
+    __timer_dict : dict
+    __neighbor_dict : dict
+    
+    __init__(nid, mac)
+    getPublisher(key)
+    getService(key)
+    getAction(key)
+    getTimer(key)
+    createPublisher(key, cls, topic, queue) : bool
+    createService(key, cls, service_name, callback) : bool
+    createAction(key, cls, action_name, callback) : bool
+    createTimer(key, sec, callback) : bool
+    updateAllowedActivities(items) : bool
+    @property nid()
+    @property mac()
+    @property allowed_activities()
+    @property activity()
+    @activity.setter activity(a)
+    @property neighbor_dict()
+    @neighbor_dict.setter neighbor_dict(d)
+    {abstract} set_activity_callback(request, response)
+    {abstract} service_info_callback(request, response)
+    {abstract} interface_info_callback(request, response)
+    addHeader(msg) : bool
+  }
+
+  class Util {
+    {static} get_mac() : str
+    {static} get_nid(mac : str) : str
+    {static} get_battery() : float
+    {static} get_cpu() : float
+    {static} get_ip() : str
+    {static} get_neighbors() : dict
+  }
+}
+
+package "mock_data" {
+  class MockRobotStatusPub {
+    __init__(nid, mac)
+    set_activity_callback(request, response)
+    service_info_callback(request, response)
+    interface_info_callback(request, response)
+    system_timer_callback()
+    geo_timer_callback()
+    misc_timer_callback()
+  }
+}
+
+package "mock_position" {
+  class MockPosition {
+    __goal : int
+    __max_vec_len : float
+    __mock_routes : list
+    __points : list
+    __current : array
+    
+    @property mock_routes()
+    @property goal()
+    @goal.setter goal(g : int)
+    @property max_vec_len()
+    @goal.setter max_vec_len(g : float)
+    @property current()
+    @goal.setter current(a : array)
+    advance_position() : bool
+  }
+}
+
+package "numpy" {
+  class ndarray {
+    array(object, ...) 
+  }
+}
+note top of ndarray : "array() is actually a package method"
+
+Node <|-- BaseStatusPub
+BaseStatusPub <|-- MockRobotStatusPub
+Util <-- MockRobotStatusPub
+MockPosition <|-- MockRobotStatusPub
+TimeUtil <-- MockRobotStatusPub
+ndarray <-- MockPosition
+@enduml

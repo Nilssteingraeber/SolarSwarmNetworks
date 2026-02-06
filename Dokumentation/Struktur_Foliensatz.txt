@@ -1,0 +1,56 @@
+# (Titelblatt) SolarSwarm Networks & SolarSwarm Visualizer
+- Unsere Namen
+- Hintergrund: Verschwommenes Foto des Instituts, der HS, eines Felds oder sonstiges Design
+
+# Was ist SolarSwarm?
+- Text: Projekt am Institut für Elektromobilität and der Hochschule Bochum
+- Text: Erstellen eines Roboterschwarms, welcher dem Umweltschutz beiträgt
+- Text: Zusammenhängende Projektarbeiten verschiedener, interdisziplinärer Teams an Studierenden:
+- Liste: Grobe Einteilung der Verantwortlichkeiten
+  - Informatik: Implementieren nötiger Software
+  - Elektrotechnik: Bauen der Roboter
+  - Nachhaltigkeit: Analyse der Energieeffizienz und Effektivität für den Umweltschutz
+
+# Unser Beitrag zu SolarSwarm
+- Text: Grundlage fürs Projekt
+- Liste:
+  - Schaffen eines dynamischen, selbstheilenden Netzwerks für Roboter
+  - Infrastruktur für Services und fürs Sammeln und Verarbeiten von Daten
+  - Web-Applikation zur Visualisierung des Schwarms
+  - Mock-Roboter zum Testen des Netzwerks und des Visualizers
+
+# Vorstellung des SolarSwarm Visualizers
+- Live Vorführung (inklusive Abdecken eines Roboters mit Alufolie für schlechtere Verbindung)
+
+# Architektur/System von SolarSwarm Networks
+- Erste Folie:
+  - Text: Komponenten des Netzwerks und Datenfluss
+  - Abbildung 2d
+- Zweite Folie:
+  - Text: Beispielhafte Verteilung der Services
+  - Abbildung 2a
+
+# Datenbankmodell
+- Abbildung Datenbankmodell/QuickDBD-export.png
+
+# ROS - Robot Operating System
+- Erste Folie: Grundlegendes Konzept von ROS
+  - Text: Mehrere parallel laufende Python- oder C-Programme, die über eine Middleware verbunden sind
+  - Text: Austausch über Messages, Services und Actions
+- Zweite Folie: Messages
+  - Abbildung zum Pub-Sub-Prinzip
+- Dritte Folie: Services
+  - Abbildung zum Client-Server-Prinzip
+- (optional) Vierte Folie: Actions
+  - Abbildung zu Actions
+- Fünfte Folie: Roboter zu Data Sink
+  - Abbildung 3i
+- Sechste Folie: Fortführung Roboter zu Data Sink
+  - Abbildung 3j
+
+# Backend
+# Frontend
+
+# Herangehensweise und Probleme
+# Diskussion der Ergebnisse
+# Was als nächstes kommt
