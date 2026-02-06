@@ -12,7 +12,7 @@ Da Mobilität und Skalierbarkeit besonders wichtig für Solarswarm sind, beschä
 
 Ad-hoc eignet sich aus vielen Gründen sehr gut für unsere Zwecke. Da unsere Roboter voraussichtlich auf Feldern, Straßen oder in Parks agieren werden, werden wir keine Infrastruktur haben und wegen der großen Distanzen häufig Knoten aus dem Netzwerk wegfallen oder sich ihm anschließen. Wegen der Gleichstellung ist das Netzwerk ausfallsicher und werden keine speziellen Rollen oder Rechte benötigt. Auch fallen kaum Kosten für das Projekt an, da lediglich WLAN-fähige Geräte benötigt werden, deren Netzwerkkarten Ad-hoc unterstützen, und Ad-hoc schnell konfiguriert werden kann.
 
-Referenz: https://www.7signal.com/ad-hoc-network
+Referenz: https://www.7signal.com/glossary/ad-hoc-network
 
 ## MANETs und WSNs
 7SIGNAL beschreibt verschiedene Arten von Ad-hoc-Netzwerken und ihre Anwendungsbereiche, von denen zwei für uns relevant sind:

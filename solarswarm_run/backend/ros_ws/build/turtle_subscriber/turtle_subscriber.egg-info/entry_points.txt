@@ -1,3 +1,0 @@
-[console_scripts]
-api_subscriber = turtle_subscriber.api_turtle_pose_subscriber:main
-subscriber = turtle_subscriber.turtle_pose_subscriber:main
