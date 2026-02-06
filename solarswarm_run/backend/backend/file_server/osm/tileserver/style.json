@@ -10,7 +10,6 @@
             "url": "mbtiles://nordrhein-westfalen.mbtiles"
         }
     },
-    "sprite": "https://openmaptiles.github.io/maptiler-basic-gl-style/sprite",
     "glyphs": "{fontstack}/{range}.pbf",
     "layers": [
         {
