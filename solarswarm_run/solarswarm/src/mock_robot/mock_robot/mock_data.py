@@ -32,7 +32,7 @@ from mock_robot.util.mock_position import MockPosition
 import logging
 
 logging.basicConfig(
-    filename="/home/ubuntu/logs/robot.log",
+    filename="/var/tmp/solarswarm/logs/robot.log",
     level=logging.INFO,
     format="[mock_data] %(levelname)s: %(message)s (%(asctime)s)",
 ) # formatting options: https://docs.python.org/3/library/logging.html#logrecord-attributes

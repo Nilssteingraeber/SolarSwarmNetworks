@@ -35,12 +35,11 @@ services:
       # network: host
     volumes:
       - /var/tmp/solarswarm/iw_dump/:/var/tmp/solarswarm/iw_dump/
+      - /var/tmp/solarswarm/logs/:/var/tmp/solarswarm/logs/
     networks:
       - internal # temporary for testing
     environment:
-      - MESH_IP=${MESH_IP}
-      - HOST_MAC=${HOST_MAC}
-      - IW_DUMP=/var/tmp/solarswarm/iw_dump
+      - IW_DUMP=/var/tmp/solarswarm/iw_dump/iw_dump.txt
   
   data_sink:
     image: data_sink
@@ -49,12 +48,12 @@ services:
       dockerfile: data_sink/sw_robot.Dockerfile
       # network: host
     volumes:
-      - ./logs/:/home/ubuntu/logs/
+      - /var/tmp/solarswarm/logs/:/var/tmp/solarswarm/logs/
     networks:
       - internal
     environment:
       # data sink
-      LOG_OUT: /home/ubuntu/logs/data_sink.log
+      LOG_OUT: /var/tmp/solarswarm/logs/data_sink.log
       FORWARD_TO_DB: forward
       TRIES_TO_GET_STATES: 2
       # DB

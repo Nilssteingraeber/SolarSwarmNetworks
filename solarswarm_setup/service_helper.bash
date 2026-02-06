@@ -546,7 +546,7 @@ elif [ $1 == "ssh" ]; then
         echo "Open a new terminal to see the changes"
     fi
 elif [ $1 == "setup" ]; then
-    if [ -z $WLANDEV ] || [ -z $MESH_IDENTITY ] || [ -z $MESH_IP ]; then
+    if [ -z $WLANDEV ] || [ -z $MESH_IDENTITY ] || [ -z $MESH_IP ] || [ -z $HOST_MAC ]; then
         echo "Error: Set all variables with options 'wlandev' and 'ssh' before setup"
         exit 1
     fi
@@ -555,13 +555,22 @@ elif [ $1 == "setup" ]; then
         exit 1
     fi
     echo "Starting setup..."
+    echo "Creating directories..."
+    # directories here should persist between reboots as docker services might restart right after
+    mkdir /var/tmp/solarswarm/ 
+    mkdir /var/tmp/solarswarm/iw_dump/
+    mkdir /var/tmp/solarswarm/logs/
+    cp $SW_RUN/tmp/env /var/tmp/solarswarm/
+    sed -i "s/MESH_IP=?/MESH_IP=$MESH_IP/; s/MESH_IDENTITY=?/MESH_IDENTITY=$MESH_IDENTITY/;" /var/tmp/solarswarm/env
+    sed -i "s/HOST_MAC=?/HOST_MAC=$HOST_MAC/; s/WLANDEV=?/WLANDEV=$WLANDEV/;" /var/tmp/solarswarm/env
+
     echo "Creating log files for services in 'logs/'..."
-    touch logs/batman_adv_setup.log
-    touch logs/batman_adv_healthcheck.log
-    touch logs/iw_dump.log
-    touch logs/docker_init.log
-    touch logs/docker_leader.log
-    touch logs/rx_copy.log
+    touch /var/tmp/solarswarm/logs/batman_adv_setup.log
+    touch /var/tmp/solarswarm/logs/batman_adv_healthcheck.log
+    touch /var/tmp/solarswarm/logs/iw_dump.log
+    touch /var/tmp/solarswarm/logs/docker_init.log
+    touch /var/tmp/solarswarm/logs/docker_leader.log
+    touch /var/tmp/solarswarm/logs/rx_copy.log
     
     echo "Copying service scripts..."
     sudo cp system\ services/*.bash /usr/local/bin/
