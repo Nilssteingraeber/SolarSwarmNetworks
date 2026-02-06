@@ -34,13 +34,13 @@ services:
       dockerfile: base_robot/base_robot.Dockerfile
       # network: host
     volumes:
-      - ./tmp/iw_dump/:/home/ubuntu/iw_dump/
-      - ./logs/:/home/ubuntu/logs/
+      - /var/tmp/solarswarm/iw_dump/:/var/tmp/solarswarm/iw_dump/
     networks:
       - internal # temporary for testing
     environment:
       - MESH_IP=${MESH_IP}
       - HOST_MAC=${HOST_MAC}
+      - IW_DUMP=/var/tmp/solarswarm/iw_dump
   
   data_sink:
     image: data_sink
